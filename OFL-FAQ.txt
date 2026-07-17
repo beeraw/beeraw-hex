@@ -1,0 +1,24 @@
+OPEN FONT LICENSE — FREQUENTLY ASKED QUESTIONS
+==============================================
+
+The full, current OFL 1.1 FAQ is maintained by SIL and is available at:
+
+    https://openfontlicense.org
+    https://silnrsi.github.io/silfontdev/ (Font Development Best Practices)
+
+The Beeraw Hex fonts are released under the SIL Open Font License, Version
+1.1, with the Reserved Font Name "Beeraw Hex" (see OFL.txt).
+
+Short summary of what the OFL allows and requires:
+
+  - You MAY use, study, embed, modify and redistribute the fonts freely,
+    including in commercial products and documents.
+  - You MAY bundle and sell the fonts WITH other software.
+  - You MAY NOT sell the fonts on their own.
+  - You MAY NOT release a modified version under the Reserved Font Name
+    "Beeraw Hex" — rename any derivative.
+  - Modified versions MUST remain under the OFL and MUST keep the copyright
+    notice and license.
+  - Documents created WITH the fonts are NOT restricted by the license.
+
+For the authoritative and complete FAQ, always refer to the SIL site above.

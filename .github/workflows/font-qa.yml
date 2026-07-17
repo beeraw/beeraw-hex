@@ -1,0 +1,68 @@
+name: font-qa
+
+# Assumes the repository root is the `logo/` project (source of truth =
+# sources/BeerawHex-Regular.ufo). If this project is nested inside a larger repo,
+# change the path filters to `logo/**` and add `working-directory: logo` to the
+# run steps.
+on:
+  push:
+    paths:
+      - "sources/**"
+      - "features/**"
+      - "tools/**"
+      - ".github/workflows/font-qa.yml"
+  pull_request:
+    paths:
+      - "sources/**"
+      - "features/**"
+      - "tools/**"
+  workflow_dispatch:
+
+jobs:
+  build-and-qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install toolchain
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r tools/requirements.txt
+
+      - name: Build TTF from the UFO source
+        run: python tools/build.py --tol 1.0
+
+      - name: Structural audit
+        run: |
+          mkdir -p audit
+          python tools/audit.py build/BeerawHex-Regular.ttf \
+            --title "CI build" > audit/ci-audit.md
+          cat audit/ci-audit.md
+
+      - name: Monoline non-regression gate
+        run: python tools/qa_monoline.py build/BeerawHex-Regular.ttf
+
+      - name: fontbakery (Google Fonts profile)
+        run: |
+          fontbakery check-googlefonts --skip-network -l WARN \
+            --ghmarkdown audit/ci-fontbakery.md \
+            --json audit/ci-fontbakery.json \
+            build/BeerawHex-Regular.ttf || true
+
+      - name: Upload QA reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: font-qa-reports
+          path: |
+            audit/ci-audit.md
+            audit/ci-fontbakery.md
+            audit/ci-fontbakery.json
+            build/BeerawHex-Regular.ttf
+
+      - name: Fail on new fontbakery FAIL
+        run: python tools/ci_gate.py audit/ci-fontbakery.json

@@ -1,0 +1,60 @@
+FONTLOG for the Beeraw Hex font family
+======================================
+
+This file provides detailed information on the Beeraw Hex font family.
+This information should be distributed along with the Beeraw Hex fonts and
+any derivative works.
+
+
+Basic font information
+----------------------
+
+Beeraw Hex is a geometric, strictly monolinear (90-unit stroke) display
+sans derived from the hexagonal "alveole" cells of the beeraw honey brand
+logo. Flat-topped / flat-bottomed hexagonal cells, vertical side edges,
+bevelled and rounded corners.
+
+The source of truth is a UFO: sources/BeerawHex-Regular.ufo (+ features.fea).
+The files in fonts/ (TTF, OTF, WOFF2, WOFF) are build artifacts, regenerated
+from the source and never edited by hand. See README.md for the build steps.
+
+
+ChangeLog
+---------
+
+1.000  (2026-07)
+- Initial public release. One style (Regular), 172 glyphs.
+- Design: geometric, strictly monolinear — the perpendicular stroke stays at
+  90 units everywhere (enforced by the tools/qa_monoline.py gate, band
+  88.5-91.9 u). Flat-topped / flat-bottomed hexagonal "alveole" cells,
+  vertical side edges, bevelled and rounded corners.
+- Coverage (French / Western-European Latin): a-z A-Z 0-9, ASCII punctuation
+  and symbols, guillemets « » ‹ ›, ligatures œ æ Œ Æ, the full set of French
+  accents (à â ä é è ê ë î ï ô ö ù û ü ÿ ç and capitals), math signs
+  (+ − = < >), and € © ® § ¢ £ ¥ ° • … among others.
+- Outlines: single-story monoline construction; round glyphs and pointed
+  apices carry optical overshoots so they do not read smaller than the flat
+  glyphs. Accented letters are TrueType composites (base + shared mark).
+- Features: class-based GPOS kerning (features/kern.fea), GSUB ccmp NFD->NFC
+  normalisation + GDEF, and a gasp table. Hinted with ttfautohint.
+- Vertical metrics follow the Google Fonts recipe (USE_TYPO_METRICS armed) so
+  accented capitals do not clip on macOS / Safari.
+- Scope is deliberately French / Western-European Latin: the full Google Fonts
+  Latin Core is not targeted (the fontbakery glyph_coverage check is
+  allow-listed in tools/ci_gate.py, not a build regression).
+- Licensed under the SIL Open Font License 1.1, Reserved Font Name
+  "Beeraw Hex".
+
+
+Acknowledgements
+----------------
+
+(Add your name / e / w / d entries here, one per line, in the form:
+ N: Name
+ E: e-mail
+ W: web address
+ D: what was done)
+
+N: The Beeraw Hex Project Authors
+W: https://beeraw.yt
+D: Design and production

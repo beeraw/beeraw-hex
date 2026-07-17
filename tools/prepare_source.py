@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""Phase 5 — tables & metadata, applied to the working UFO before the build.
+
+  * gasp: single range, rangeMaxPPEM 65535, behavior flag 15
+    (grid-fit + grayscale + symmetric grid-fit + symmetric smoothing).
+  * GSUB: a real, functional `ccmp` that composes base + combining diacritic
+    into the precomposed accented glyph (NFD -> NFC robustness). Needs the
+    combining marks as zero-width, mark-classified glyphs; their ink is copied
+    from the existing spacing-accent `.comp` glyphs so a lone mark still shows.
+  * features.fea: the ccmp block + the existing GPOS kerning, self-contained.
+  * OS/2 / head sanity: USE_TYPO_METRICS (fsSelection bit 7), Regular style map
+    (=> macStyle 0). Vendor/metrics already carried over by ttf_to_ufo.py.
+
+Mac name-table entries (the universal `no_mac_entries` FAIL) are stripped later,
+post-build, in tools/build.py — fontmake naming happens there.
+
+Usage:  python tools/prepare_source.py [ufo] [--fea sources/features.fea]
+"""
+import argparse
+import ufoLib2
+
+# accented glyph -> (base glyph, combining-mark glyph). Mirrors the generator's
+# COMPOSITE table; the mark name is the *combining* form we add to the font.
+COMB = {"acute": "acutecomb", "grave": "gravecomb", "circumflex": "circumflexcomb",
+        "dieresis": "dieresiscomb", "cedilla": "cedillacomb"}
+COMB_UV = {"gravecomb": 0x0300, "acutecomb": 0x0301, "circumflexcomb": 0x0302,
+           "dieresiscomb": 0x0308, "cedillacomb": 0x0327}
+SPACING_SRC = {"acutecomb": "acute.comp", "gravecomb": "grave.comp",
+               "circumflexcomb": "circumflex.comp", "dieresiscomb": "dieresis.comp",
+               "cedillacomb": "cedilla.comp"}
+
+# accented -> (base, mark) ; base/mark are the generator's component names
+COMPOSITE = {
+    "eacute": ("e", "acute"), "egrave": ("e", "grave"), "ecircumflex": ("e", "circumflex"),
+    "edieresis": ("e", "dieresis"), "agrave": ("a", "grave"), "acircumflex": ("a", "circumflex"),
+    "adieresis": ("a", "dieresis"), "icircumflex": ("i", "circumflex"), "idieresis": ("i", "dieresis"),
+    "ocircumflex": ("o", "circumflex"), "odieresis": ("o", "dieresis"), "ugrave": ("u", "grave"),
+    "ucircumflex": ("u", "circumflex"), "udieresis": ("u", "dieresis"), "ydieresis": ("y", "dieresis"),
+    "ccedilla": ("c", "cedilla"),
+    "Eacute": ("E", "acute"), "Egrave": ("E", "grave"), "Ecircumflex": ("E", "circumflex"),
+    "Edieresis": ("E", "dieresis"), "Agrave": ("A", "grave"), "Acircumflex": ("A", "circumflex"),
+    "Adieresis": ("A", "dieresis"), "Icircumflex": ("I", "circumflex"), "Idieresis": ("I", "dieresis"),
+    "Ocircumflex": ("O", "circumflex"), "Odieresis": ("O", "dieresis"), "Ugrave": ("U", "grave"),
+    "Ucircumflex": ("U", "circumflex"), "Udieresis": ("U", "dieresis"), "Ydieresis": ("Y", "dieresis"),
+    "Ccedilla": ("C", "cedilla"),
+}
+
+
+def add_combining_marks(ufo, log):
+    cats = dict(ufo.lib.get("public.openTypeCategories", {}))
+    for comb, uv in COMB_UV.items():
+        if comb in ufo:
+            continue
+        src = SPACING_SRC[comb]
+        g = ufo.newGlyph(comb)
+        g.width = 0                       # combining marks are zero-advance
+        g.unicodes = [uv]
+        if src in ufo:                    # copy the spacing accent's ink
+            srcg = ufo[src]
+            pen = g.getPointPen()
+            srcg.drawPoints(pen)
+        cats[comb] = "mark"               # GDEF mark class -> clean GDEF
+        log.append(f"+ combining `{comb}` U+{uv:04X} (ink from `{src}`, width 0, GDEF=mark)")
+    ufo.lib["public.openTypeCategories"] = cats
+
+
+def _circle(pen, cx, cy, r):
+    """Draw a circle contour with 4 cubic segments (kappa), counter-clockwise
+    (PostScript/UFO convention for an outer contour)."""
+    k = 0.5522847498 * r
+    pen.moveTo((cx, cy + r))
+    pen.curveTo((cx - k, cy + r), (cx - r, cy + k), (cx - r, cy))
+    pen.curveTo((cx - r, cy - k), (cx - k, cy - r), (cx, cy - r))
+    pen.curveTo((cx + k, cy - r), (cx + r, cy - k), (cx + r, cy))
+    pen.curveTo((cx + r, cy + k), (cx + k, cy + r), (cx, cy + r))
+    pen.closePath()
+
+
+def add_dotted_circle(ufo, log):
+    """U+25CC DOTTED CIRCLE — utility glyph so combining marks have a base to
+    display on (clears the fontbakery `dotted_circle` WARN introduced by adding
+    the combining marks). 12 dots on a ring, monoline-sized."""
+    import math
+    if "uni25CC" in ufo or "dottedcircle" in ufo:
+        return
+    g = ufo.newGlyph("dottedcircle")
+    g.unicodes = [0x25CC]
+    cx, cy, ring_r, dot_r = 250, 350, 210, 26
+    g.width = 2 * cx
+    pen = g.getPen()
+    for i in range(12):
+        a = math.pi / 2 + i * (2 * math.pi / 12)
+        _circle(pen, round(cx + ring_r * math.cos(a)),
+                round(cy + ring_r * math.sin(a)), dot_r)
+    log.append("+ `dottedcircle` U+25CC (12-dot ring, base for combining marks)")
+
+
+def build_ccmp():
+    lines = ["# ccmp — compose base + combining diacritic -> precomposed (NFD->NFC).",
+             "# Generated by tools/prepare_source.py.",
+             "feature ccmp {"]
+    for acc, (base, mark) in COMPOSITE.items():
+        comb = COMB[mark]
+        lines.append(f"    sub {base} {comb} by {acc};")
+    lines += ["} ccmp;", ""]
+    return "\n".join(lines)
+
+
+def assemble_features(ccmp_text, kern_path):
+    head = ["languagesystem DFLT dflt;",
+            "languagesystem latn dflt;",
+            ""]
+    with open(kern_path) as f:
+        kern = f.read()
+    # kern.fea already declares languagesystems; strip its duplicates
+    kern_lines = [ln for ln in kern.splitlines()
+                  if not ln.strip().startswith("languagesystem")]
+    return "\n".join(head) + ccmp_text + "\n# ---- GPOS kerning ----\n" + "\n".join(kern_lines) + "\n"
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("ufo", nargs="?", default="sources/BeerawHex-Regular.ufo")
+    ap.add_argument("--fea", default="sources/features.fea")
+    ap.add_argument("--kern", default="features/kern.fea")
+    args = ap.parse_args()
+
+    ufo = ufoLib2.Font.open(args.ufo)
+    log = []
+
+    # 1. gasp
+    ufo.info.openTypeGaspRangeRecords = [
+        {"rangeMaxPPEM": 65535, "rangeGaspBehavior": [0, 1, 2, 3]}]  # flag 15
+    log.append("gasp: rangeMaxPPEM 65535, behavior [0,1,2,3] = flag 15")
+
+    # 2. combining marks + dotted circle + 3. features (ccmp + kern)
+    add_combining_marks(ufo, log)
+    add_dotted_circle(ufo, log)
+    ccmp = build_ccmp()
+    fea = assemble_features(ccmp, args.kern)
+    with open(args.fea, "w") as f:
+        f.write(fea)
+    ufo.features.text = fea
+    log.append(f"features.fea: ccmp ({len(COMPOSITE)} rules) + GPOS kern -> {args.fea}")
+
+    # 4. OS/2 / head sanity
+    sel = set(ufo.info.openTypeOS2Selection or [])
+    sel.add(7)                            # USE_TYPO_METRICS
+    ufo.info.openTypeOS2Selection = sorted(sel)
+    ufo.info.styleMapStyleName = "regular"   # -> head.macStyle 0
+    log.append("OS/2 fsSelection: USE_TYPO_METRICS (bit 7) set; styleMap=regular (macStyle 0)")
+
+    ufo.save(args.ufo, overwrite=True)
+    print("prepared source:", args.ufo)
+    for line in log:
+        print("  -", line)
+
+
+if __name__ == "__main__":
+    main()
