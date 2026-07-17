@@ -26,6 +26,12 @@ from fontTools.pens.qu2cuPen import Qu2CuPen
 MAX_ERR = 0.1          # faithful: keep the cubic UFO within 0.1 u of the TTF
 NEW_VERSION = (1, 0)   # v1.000 (versionMajor, versionMinor)
 
+# Set rather than copied from the baseline: fontbakery's `license` check wants
+# this exact wording (note the colon before the URL) when OFL.txt is present.
+OFL_DESCRIPTION = ("This Font Software is licensed under the SIL Open Font "
+                   "License, Version 1.1. This license is available with a FAQ "
+                   "at: https://openfontlicense.org")
+
 
 def reverse_unicode_map(ttf):
     rev = {}
@@ -52,7 +58,7 @@ def copy_fontinfo(ufo, ttf):
     info.copyright = names.get(0)
     info.openTypeNameManufacturer = names.get(8)
     info.openTypeNameDesigner = names.get(9)
-    info.openTypeNameLicense = names.get(13)
+    info.openTypeNameLicense = OFL_DESCRIPTION
     info.openTypeNameLicenseURL = names.get(14)
     info.openTypeNameManufacturerURL = names.get(11)
     info.openTypeNameDesignerURL = names.get(12)
