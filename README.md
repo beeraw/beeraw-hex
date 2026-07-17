@@ -1,5 +1,10 @@
 # Beeraw Hex
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/specimen-dark.png">
+  <img alt="Beeraw Hex — specimen: wordmark, uppercase, lowercase, digits and symbols" src="images/specimen-light.png">
+</picture>
+
 A geometric, strictly **monolinear** (90-unit stroke) display sans, derived from
 the hexagonal *alveole* cells of the beeraw honey-brand logo. Flat-topped /
 flat-bottomed hexagonal cells, vertical side edges, bevelled and rounded corners.
@@ -31,7 +36,9 @@ Grab a file from [`fonts/`](fonts/):
 }
 ```
 
-See [`specimen.html`](specimen.html) for a self-contained type specimen.
+See [`specimen.html`](specimen.html) for the full, self-contained type specimen.
+The banner above is rendered from the shipped TTF by
+`tools/make_readme_image.py` (headless Chrome → `images/`).
 
 ## Source-first
 
