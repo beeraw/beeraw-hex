@@ -1,5 +1,5 @@
 import base64, os
-ROOT = "/Users/jeanluc/working/logo"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 b64 = base64.b64encode(open(f"{ROOT}/fonts/BeerawHex-Regular.ttf", "rb").read()).decode()
 
 HTML = f"""<!doctype html><html><head><meta charset="utf-8"><style>

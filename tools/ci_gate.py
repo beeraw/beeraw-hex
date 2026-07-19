@@ -2,8 +2,10 @@
 """CI gate: fail (exit 1) if fontbakery reports any FAIL/FATAL check, except the
 ones on ALLOW — tracked design gaps that are not build regressions.
 
-  * glyph_coverage : ¢ (U+00A2) and £ (U+00A3) are not drawn. Adding them is a
-    design task (monoline currency glyphs), tracked separately — not a
+  * glyph_coverage : the family is deliberately French / Western-European in
+    scope and does not target the Google Fonts "Latin Core" set (278 glyphs),
+    so the pan-European glyphs it requires (Á Ã Ñ Õ Ð Þ ß and the associated
+    marks) are absent by design. Tracked in audit/08-latin-core.md — not a
     regression introduced by the build.
 
 Usage:  python tools/ci_gate.py <fontbakery.json>

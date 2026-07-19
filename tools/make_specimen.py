@@ -1,27 +1,51 @@
 #!/usr/bin/env python3
 """Generate a self-contained HTML type specimen for Beeraw Hex.
 
-Reads BeerawHex-Regular.ttf, embeds it as a base64 @font-face, and writes
-specimen.html at the repo root. No external dependencies — opens in any browser.
+Embeds every master as a base64 @font-face and writes specimen.html at the repo
+root. No external dependencies — opens in any browser.
+
+The @font-face block is generated from font_build.MASTERS, so adding a master to
+that table is enough for it to appear here. WOFF2 is embedded rather than TTF:
+the specimen is a browser artifact, and it keeps eight masters lighter than four
+TTFs were (~100 KB instead of ~170 KB).
 
 Usage:  python tools/make_specimen.py
 """
 import base64
 import os
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FONTS = os.path.join(ROOT, "fonts")
 OUT = os.path.join(ROOT, "specimen.html")
+
+sys.path.insert(0, ROOT)
+from font_build import MASTERS, TYPO_FAMILY          # noqa: E402
 
 
 def embed(name):
     return base64.b64encode(open(os.path.join(FONTS, name), "rb").read()).decode("ascii")
 
 
-b64 = embed("BeerawHex-Regular.ttf")
-b64_bold = embed("BeerawHex-Bold.ttf")
-b64_wide = embed("BeerawHexWide-Regular.ttf")
-b64_wide_bold = embed("BeerawHexWide-Bold.ttf")
+def font_faces():
+    """One @font-face per master, keyed by typographic family + weight class."""
+    out = []
+    for cfg in MASTERS.values():
+        woff2 = cfg["filename"] + ".woff2"
+        if not os.path.exists(os.path.join(FONTS, woff2)):
+            continue
+        fam = TYPO_FAMILY.get(cfg.get("width_class", 5), "Beeraw Hex")
+        out.append(
+            "@font-face {\n"
+            "  font-family: '%s';\n"
+            "  src: url(data:font/woff2;base64,%s) format('woff2');\n"
+            "  font-weight: %d; font-style: normal; font-display: block;\n"
+            "}" % (fam, embed(woff2), cfg["weight_class"])
+        )
+    return "\n".join(out)
+
+
+FACES = font_faces()
 
 HTML = """<!doctype html>
 <html lang="fr">
@@ -30,26 +54,7 @@ HTML = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>beeraw·hex — spécimen</title>
 <style>
-@font-face {{
-  font-family: 'Beeraw Hex';
-  src: url(data:font/ttf;base64,{b64}) format('truetype');
-  font-weight: 400; font-style: normal; font-display: block;
-}}
-@font-face {{
-  font-family: 'Beeraw Hex';
-  src: url(data:font/ttf;base64,{b64_bold}) format('truetype');
-  font-weight: 700; font-style: normal; font-display: block;
-}}
-@font-face {{
-  font-family: 'Beeraw Hex Wide';
-  src: url(data:font/ttf;base64,{b64_wide}) format('truetype');
-  font-weight: 400; font-style: normal; font-display: block;
-}}
-@font-face {{
-  font-family: 'Beeraw Hex Wide';
-  src: url(data:font/ttf;base64,{b64_wide_bold}) format('truetype');
-  font-weight: 700; font-style: normal; font-display: block;
-}}
+{faces}
 :root {{
   --bg: #faf9f5; --ink: #1c1a16; --muted: #9a8f7d; --line: #e7e0d2;
   --amber: #B8860B;
@@ -94,7 +99,13 @@ h2 {{ font-family: ui-monospace, monospace; font-weight: 400; font-size: 12px;
             font-size:11px; letter-spacing:.1em; text-transform:uppercase;
             color:var(--muted); vertical-align:middle; }}
 .b {{ font-weight: 700; }}
+.w100 {{ font-weight: 100; }} .w300 {{ font-weight: 300; }} .w400 {{ font-weight: 400; }}
 .wide {{ font-family: 'Beeraw Hex Wide', system-ui, sans-serif; }}
+.axis {{ display:grid; grid-template-columns: 1fr 1fr; gap: 0 2.2rem; }}
+.axis h3 {{ font-family: ui-monospace, monospace; font-weight:400; font-size:11px;
+            letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
+            margin:0 0 .6rem; }}
+.axis .row {{ font-size: clamp(24px, 3.6vw, 40px); line-height:1.25; }}
 .caps-acc {{ font-size: clamp(30px, 6vw, 58px); letter-spacing:.02em; }}
 footer {{ margin-top: 6rem; border-top:1px solid var(--line); padding-top:1.4rem;
           font-family: ui-monospace, monospace; font-size:12px; color:var(--muted);
@@ -105,28 +116,45 @@ a {{ color: var(--amber); }}
 <body>
 <div class="wrap">
 
-  <p class="tag">Fonte alvéolaire monolinéaire · Regular 90 u / Bold 130 u · beeraw</p>
+  <p class="tag">Fonte alvéolaire monolinéaire · 8 masters · 2 axes · beeraw</p>
   <div class="masthead"><span class="hl">b</span>ee<span class="hl">r</span>aw·hex</div>
-  <p class="sub">Un display géométrique hexagonal, en deux graisses.</p>
+  <p class="sub">Un display géométrique hexagonal, en quatre graisses et deux chasses.</p>
 
   <section>
     <h2>Graisses</h2>
-    <div class="wt"><span class="lbl">Reg 90</span>beeraw hexagone</div>
-    <div class="wt b"><span class="lbl">Bold 130</span>beeraw hexagone</div>
-    <p class="para small">La monoline est l'ADN : le Bold n'est pas un dessin à
-    part, c'est la même ossature — mêmes chasses, même crénage — dont le trait
-    passe de 90 à 130 unités. Famille RIBBI : <b class="b">gras</b> lié au normal.</p>
+    <div class="wt w100"><span class="lbl">100 · 40</span>beeraw hexagone</div>
+    <div class="wt w300"><span class="lbl">300 · 64</span>beeraw hexagone</div>
+    <div class="wt w400"><span class="lbl">400 · 90</span>beeraw hexagone</div>
+    <div class="wt b"><span class="lbl">700 · 130</span>beeraw hexagone</div>
+    <p class="para small">La monoline est l'ADN : une graisse n'est pas un dessin
+    à part, c'est la même ossature — mêmes chasses, même crénage — dont le trait
+    passe de 40 à 130 unités. UltraLight et Light portent leurs propres noms
+    typographiques ; Regular et <b class="b">Bold</b> restent liés en RIBBI.</p>
   </section>
 
   <section>
-    <h2>Chasses — beeraw hex wide</h2>
-    <div class="wt"><span class="lbl">Normal</span>hexagone</div>
-    <div class="wt wide"><span class="lbl">Wide</span>hexagone</div>
-    <div class="wt wide b"><span class="lbl">Wide·B</span>hexagone</div>
-    <p class="para small wide">« Beeraw Hex Wide » élargit la chasse de 35 % —
-    demi-largeurs des ronds et espacement — <b class="b">sans toucher au trait</b> :
-    il reste rigoureusement à 90 u (130 u en gras). Les alvéoles s'ouvrent, la
-    monoline tient par construction. Famille distincte, en Regular et Bold.</p>
+    <h2>Chasses — les deux axes</h2>
+    <div class="axis">
+      <div>
+        <h3>Normal</h3>
+        <div class="row w100">hexagone</div>
+        <div class="row w300">hexagone</div>
+        <div class="row w400">hexagone</div>
+        <div class="row b">hexagone</div>
+      </div>
+      <div class="wide">
+        <h3>Wide ×1,35</h3>
+        <div class="row w100">hexagone</div>
+        <div class="row w300">hexagone</div>
+        <div class="row w400">hexagone</div>
+        <div class="row b">hexagone</div>
+      </div>
+    </div>
+    <p class="para small" style="margin-top:1.6rem">L'axe de chasse élargit les
+    demi-largeurs des ronds et l'espacement de 35 % <b class="b">sans toucher au
+    trait</b>. Comme chaque fût est tracé à largeur fixe, élargir ne peut pas
+    l'épaissir : le gate monolinéaire tient par construction, à n'importe quelle
+    graisse et n'importe quelle chasse.</p>
   </section>
 
   <section>
@@ -201,7 +229,7 @@ a {{ color: var(--amber); }}
 </html>
 """
 
-open(OUT, "w", encoding="utf-8").write(HTML.format(
-    b64=b64, b64_bold=b64_bold, b64_wide=b64_wide, b64_wide_bold=b64_wide_bold))
-kb = (len(HTML) + len(b64) + len(b64_bold) + len(b64_wide) + len(b64_wide_bold)) / 1024
-print(f"wrote {OUT}  (~{kb:.0f} KB, 4 masters embedded)")
+page = HTML.format(faces=FACES)
+open(OUT, "w", encoding="utf-8").write(page)
+n = FACES.count("@font-face")
+print(f"wrote {OUT}  (~{len(page)/1024:.0f} KB, {n} masters embedded)")

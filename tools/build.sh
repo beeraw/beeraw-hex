@@ -33,5 +33,14 @@ echo ">> OTF + WOFF2 + WOFF (per master)"
 echo ">> specimen.html"
 "$PY" tools/make_specimen.py
 
+# specimen.pdf needs a browser to print it; skip where there isn't one (CI).
+if [ -n "${CHROME:-}" ] || [ -e "/Applications/Google Chrome.app" ] \
+   || command -v google-chrome chromium chromium-browser >/dev/null 2>&1; then
+  echo ">> specimen.pdf"
+  "$PY" tools/make_specimen_pdf.py
+else
+  echo "(no Chrome — skipping specimen.pdf)"
+fi
+
 echo ">> done"
 ls -1 fonts/

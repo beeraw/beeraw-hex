@@ -32,7 +32,13 @@ from scipy.ndimage import distance_transform_edt, maximum_filter
 # the Regular acceptance window (W-1.5 .. W+1.9) carried across weights, so the
 # 90 master keeps its exact historical 88.5-91.9 gate.
 BAND_LO, BAND_HI = -1.5, 1.9
-EM = 1000  # render 1 px == 1 unit
+# Render 2 px per unit. At 1 px/unit the distance transform quantises stroke
+# widths to ~1 u steps: harmless at W=90 (~1 %) but 2.5 % at the UltraLight's
+# W=40, where it pushed p95 to a spurious 42.0 and failed the gate on a font
+# whose geometry measures a clean 40.0. Oversampling collapses that spread
+# (UltraLight p5-p95: 2.00 u -> 0.46 u) without touching the band.
+EM = 2000
+SCALE = EM / 1000.0
 PAD = 16
 
 
@@ -62,7 +68,7 @@ def glyph_median_width(font, ch):
         return None
     dist = distance_transform_edt(binimg)
     ridge = (dist == maximum_filter(dist, size=3)) & (dist > 1.5)
-    vals = dist[ridge] * 2.0
+    vals = dist[ridge] * 2.0 / SCALE        # px -> font units
     if vals.size == 0:
         return None
     return float(np.median(vals)), float(np.percentile(vals, 5)), float(np.percentile(vals, 95))

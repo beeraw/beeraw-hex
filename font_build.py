@@ -14,7 +14,7 @@ from fontTools.ttLib.tables import ttProgram
 from fontTools.feaLib.builder import addOpenTypeFeatures
 from fontTools.misc.transform import Offset
 
-VERSION = "2.007"       # semantic version; drives name ID 5 and head.fontRevision
+VERSION = "2.008"       # semantic version; drives name ID 5 and head.fontRevision
 
 # ---- two design axes: WEIGHT (stroke) × WIDTH (proportion) ----
 # The monoline IS the ADN, so NEITHER axis touches the perpendicular stroke:
@@ -24,21 +24,44 @@ VERSION = "2.007"       # semantic version; drives name ID 5 and head.fontRevisi
 # Because every stem is drawn as a fixed-W bar/stroke, widening can't thicken it:
 # the monoline gate holds by construction at any width_factor.
 #
-# Masters ship as RIBBI families: "Beeraw Hex" (Regular+Bold) and the wider
-# "Beeraw Hex Wide" (Regular+Bold), width_factor 1.35 (a confident wide that
-# stays elegant short of an "extended").
+# A style pair (Regular+Bold) is all a legacy RIBBI family can hold, so the extra
+# weights each get their OWN nameID 1 ("Beeraw Hex Light") with styleName Regular,
+# plus typographic names (nameID 16/17 = "Beeraw Hex" / "Light") that regroup them
+# under one family in modern apps. nameID 16/17 are omitted where they'd merely
+# repeat 1/2, as the spec asks.
+#
+# Traced glyphs (& @) carry their own intrinsic weight, so amp_buf/at_buf go
+# NEGATIVE on the light side to erode them down to the stroke.
 def _master(family, style, stroke, width_factor, weight_class, width_class,
-            panose_weight, bold, filename, amp_buf, at_buf):
+            panose_weight, bold, filename, amp_buf, at_buf, typo_subfamily=None):
     return dict(family=family, style=style, stroke=stroke, width_factor=width_factor,
                 weight_class=weight_class, width_class=width_class,
                 panose_weight=panose_weight, bold=bold, filename=filename,
-                amp_buf=amp_buf, at_buf=at_buf)
+                amp_buf=amp_buf, at_buf=at_buf, typo_subfamily=typo_subfamily)
 
 MASTERS = {
+    # weight ladder (normal width): 40 -> 64 -> 90 -> 130
+    # at_buf stops at -19: the traced arobase tears into two pieces at -21. That
+    # leaves the @ at ~44 u against a 40 u stroke — imperceptible, and far better
+    # than a broken glyph.
+    "UltraLight": _master("Beeraw Hex UltraLight", "Regular", 40, 1.00, 100, 5, 2, False,
+                          "BeerawHex-UltraLight",  amp_buf=-13, at_buf=-19,
+                          typo_subfamily="UltraLight"),
+    "Light":    _master("Beeraw Hex Light", "Regular", 64,  1.00, 300, 5, 3, False,
+                        "BeerawHex-Light",       amp_buf=-1, at_buf=-9,
+                        typo_subfamily="Light"),
     "Regular":  _master("Beeraw Hex",      "Regular", 90,  1.00, 400, 5, 5, False,
                         "BeerawHex-Regular",     amp_buf=7,  at_buf=0),
     "Bold":     _master("Beeraw Hex",      "Bold",    130, 1.00, 700, 5, 8, True,
                         "BeerawHex-Bold",        amp_buf=32, at_buf=25),
+    # same ladder at the wide width. The traced glyphs keep their natural width,
+    # so their buffers depend on the stroke only and carry over unchanged.
+    "WideUltraLight": _master("Beeraw Hex Wide UltraLight", "Regular", 40, 1.35, 100, 7, 2, False,
+                              "BeerawHexWide-UltraLight", amp_buf=-13, at_buf=-19,
+                              typo_subfamily="UltraLight"),
+    "WideLight": _master("Beeraw Hex Wide Light", "Regular", 64, 1.35, 300, 7, 3, False,
+                         "BeerawHexWide-Light",  amp_buf=-1, at_buf=-9,
+                         typo_subfamily="Light"),
     "Wide":     _master("Beeraw Hex Wide", "Regular", 90,  1.35, 400, 7, 5, False,
                         "BeerawHexWide-Regular", amp_buf=7,  at_buf=0),
     "WideBold": _master("Beeraw Hex Wide", "Bold",    130, 1.35, 700, 7, 8, True,
@@ -46,6 +69,9 @@ MASTERS = {
 }
 # back-compat alias (older tooling / docs referred to the weight-only table)
 WEIGHTS = MASTERS
+
+# typographic family (nameID 16) per width class — the weight lives in nameID 17
+TYPO_FAMILY = {5: "Beeraw Hex", 7: "Beeraw Hex Wide"}
 
 # ---- vertical metrics (Phase 6) ----
 # fontbakery's googlefonts profile (os2_metrics_match_hhea + typoAscender>yMax)
@@ -71,7 +97,15 @@ SB   = 46           # side bearing
 # reset per master by _apply_master(); the defaults reproduce the Regular master.
 AMP_BUF = 7         # ampersand thickening (source drawing sits below the monoline)
 AT_BUF  = 0         # arobase thickening (source drawing already at Regular weight)
-RAD  = 26           # corner rounding radius
+
+# Corner rounding radius. round_corners() opens the shape with this radius, which
+# erases any ink thinner than 2*RAD — so a fixed 26 annihilates the glyph outright
+# below W≈52 (measured: W=45 -> area 0). RAD therefore tracks the stroke on the
+# light side and is capped at 26, which leaves Regular (26.1 -> 26) and every
+# heavier master exactly as they were.
+RAD_MAX = 26
+RAD_RATIO = 0.29
+RAD  = RAD_MAX      # reset per master by _apply_master()
 MIT  = dict(join_style=2, mitre_limit=12)
 RES  = 6            # buffer resolution for rounded corners
 
@@ -240,7 +274,10 @@ def i():
     return U(vbar(0, 0, XH), dot(W / 2, XH + 120, W / 2))
 
 def j():
-    stem = vbar(RW - W, DESC + 90, XH)
+    # the stem must land on TOP of the hook: DESC + W, not a hard-coded 90 that
+    # only happened to equal W at Regular (it left the descender detached from
+    # the stem by 26 u at Light and 50 u at UltraLight).
+    stem = vbar(RW - W, DESC + W, XH)
     hook = hbar(20, RW, DESC)
     return U(stem, hook, dot(RW - W / 2, XH + 120, W / 2))
 
@@ -583,8 +620,16 @@ def n9():
     return affinity.rotate(n6(), 180, origin=(DRW, CCY))         # 9 = 6 rotated 180 deg
 
 def n8():
-    up = ring(cell(DRW, CAP * 0.72, CAP * 0.28, DRW))
-    lo = ring(cell(DRW, CAP * 0.28, CAP * 0.28, DRW))
+    # Size the two bowls from the waist outwards so their facing walls coincide
+    # EXACTLY: the waist is then a single W-thick band at any weight. The old
+    # fixed geometry never was — 96 u at Regular, 176 u at Bold, and at
+    # UltraLight the walls no longer even met (two 40 u strokes with a 4 u gap,
+    # which read as one doubled, too-heavy band).
+    mid = CAP / 2                       # waist height
+    rh_up = (CAP - (mid - W / 2)) / 2   # upper bowl: outer spans mid-W/2 .. CAP
+    rh_lo = (mid + W / 2) / 2           # lower bowl: outer spans 0 .. mid+W/2
+    up = ring(cell(DRW, CAP - rh_up, rh_up, DRW))
+    lo = ring(cell(DRW, rh_lo, rh_lo, DRW))
     return U(up, lo)
 
 def n7():
@@ -865,7 +910,7 @@ PUNCT = {'.': period, ',': comma, '-': hyphen, "'": apostrophe, ':': colon, '/':
 def g_():
     bowl = cell(RW, 250, 250 + OV_LC, RW)
     body = bowl.difference(bowl.buffer(-W, **MIT))
-    stem = vbar(2 * RW - W, DESC + 90, XH)
+    stem = vbar(2 * RW - W, DESC + W, XH)      # sits on the hook — see j()
     hook = hbar(20, 2 * RW, DESC)
     return U(body, stem, hook)
 LOWER['g'] = g_
@@ -941,11 +986,17 @@ def _AE():
 
 # french guillemets
 def _guill(right):
+    # The two chevrons must sit far enough apart that round_corners' dilate step
+    # cannot bridge them. x0 20/135 with half 78 welded them into a solid blob at
+    # Bold weight; 20/175 with half 72 keeps a clean gap. (tools/redraw_glyphs.py
+    # already carried this fix for the normalised Regular — back-ported here so
+    # every generator master gets it too.)
+    HALF = 72
     def chev(x0):
         if right:
-            return U(dstroke((x0, 175), (x0 + 78, 280), WA), dstroke((x0 + 78, 280), (x0, 385), WA))
-        return U(dstroke((x0 + 78, 175), (x0, 280), WA), dstroke((x0, 280), (x0 + 78, 385), WA))
-    return U(chev(20), chev(135))
+            return U(dstroke((x0, 175), (x0 + HALF, 280), WA), dstroke((x0 + HALF, 280), (x0, 385), WA))
+        return U(dstroke((x0 + HALF, 175), (x0, 280), WA), dstroke((x0, 280), (x0 + HALF, 385), WA))
+    return U(chev(20), chev(175))
 
 LIGS = {'œ': _oe, 'æ': _ae, 'Œ': _OE, 'Æ': _AE, '«': lambda: _guill(False), '»': lambda: _guill(True)}
 
@@ -971,7 +1022,9 @@ BUILDERS.update(LOWER); BUILDERS.update(UPPER); BUILDERS.update(DIGIT); BUILDERS
 BUILDERS.update(LIGS); BUILDERS.update(EXTRA); BUILDERS.update(SYM)   # accents = composites
 
 # ---------- corner rounding ----------
-def round_corners(g, r=RAD):
+def round_corners(g, r=None):
+    # resolved at call time — RAD is per-master (see RAD_MAX/RAD_RATIO)
+    r = RAD if r is None else r
     g = g.buffer(-r, join_style=1, resolution=RES).buffer(r, join_style=1, resolution=RES)
     g = g.buffer(r * 0.6, join_style=1, resolution=RES).buffer(-r * 0.6, join_style=1, resolution=RES)
     return g
@@ -1212,9 +1265,10 @@ def _apply_master(cfg):
     function reads W / WA / WF / RW / CRW / DRW / AMP_BUF / AT_BUF at call time,
     so mutating them here re-draws the whole font at a new stroke AND width — no
     per-glyph plumbing. The 200/250/200 bases are the Regular round half-widths."""
-    global W, WA, WF, RW, CRW, DRW, AMP_BUF, AT_BUF
+    global W, WA, WF, RW, CRW, DRW, AMP_BUF, AT_BUF, RAD
     W = cfg["stroke"]
     WA = W * 0.82
+    RAD = min(RAD_MAX, round(W * RAD_RATIO))   # see RAD_MAX: keeps thin masters alive
     WF = cfg.get("width_factor", 1.0)
     RW  = round(200 * WF)      # x-height round half-width
     CRW = round(250 * WF)      # cap round half-width
@@ -1320,11 +1374,19 @@ def build_font(path, cfg=None):
     # RIBBI family: familyName carries the WIDTH ("Beeraw Hex" / "Beeraw Hex
     # Wide"), styleName the WEIGHT (Regular/Bold), so each width links its own
     # Regular+Bold pair (nameID 1/2) and bold-toggle works within it.
-    fb.setupNameTable({
+    # Weights outside the RIBBI pair carry typographic names: nameID 1/2 stay
+    # legacy-compatible ("Beeraw Hex Light" / "Regular") while 16/17 regroup them
+    # under the real family and weight. The full name follows the typographic
+    # pair when there is one, so it reads "Beeraw Hex Light", not the clumsy
+    # "Beeraw Hex Light Regular".
+    typo_sub = cfg.get("typo_subfamily")
+    typo_family = TYPO_FAMILY.get(cfg.get("width_class", 5), "Beeraw Hex")
+    names = {
         "copyright": "Copyright 2026 The Beeraw Hex Project Authors (https://beeraw.yt)",
         "familyName": family,
         "styleName": style,
-        "fullName": "%s %s" % (family, style),
+        "fullName": ("%s %s" % (typo_family, typo_sub)) if typo_sub
+                    else ("%s %s" % (family, style)),
         "psName": cfg["filename"],
         "version": "Version %s" % VERSION,
         "manufacturer": "beeraw",
@@ -1337,7 +1399,11 @@ def build_font(path, cfg=None):
                                "Font License, Version 1.1. This license is available "
                                "with a FAQ at: https://openfontlicense.org"),
         "licenseInfoURL": "https://openfontlicense.org",
-    })
+    }
+    if typo_sub:
+        names["typographicFamily"] = typo_family
+        names["typographicSubfamily"] = typo_sub
+    fb.setupNameTable(names)
 
     # ---- Phase 6/7: OS/2 ----
     panose = Panose()

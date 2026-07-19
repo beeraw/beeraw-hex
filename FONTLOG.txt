@@ -14,12 +14,13 @@ sans derived from the hexagonal "alveole" cells of the beeraw honey brand
 logo. Flat-topped / flat-bottomed hexagonal cells, vertical side edges,
 bevelled and rounded corners.
 
-The family spans two axes: weight (stroke 90 / 130 units) and width (normal /
-Wide, x1.35). Neither axis touches the perpendicular stroke, which stays at its
-master's nominal value everywhere -- that monoline is the DNA of the design.
+The family spans two axes: weight (stroke 40 / 64 / 90 / 130 units) and width
+(normal / Wide, x1.35), for eight masters. Neither axis touches the
+perpendicular stroke, which stays at its master's nominal value everywhere --
+that monoline is the DNA of the design.
 
 There are two build paths. The base Regular ships normalised and is built from
-the UFO sources/BeerawHex-Regular.ufo (+ features.fea); the other three masters
+the UFO sources/BeerawHex-Regular.ufo (+ features.fea); the other seven masters
 come straight from the parametric generator font_build.py. The files in fonts/
 (TTF, OTF, WOFF2, WOFF) are build artifacts, regenerated from the source and
 never edited by hand. See README.md for the build steps.
@@ -27,6 +28,39 @@ never edited by hand. See README.md for the build steps.
 
 ChangeLog
 ---------
+
+2.008  (2026-07)
+- Four new masters, completing a 4 x 2 matrix (eight masters): UltraLight (100,
+  stroke 40) and Light (300, stroke 64), at both the normal and the Wide width.
+  UltraLight and Light carry typographic names (nameID 16/17) so the four
+  weights regroup under one family in modern apps while nameID 1/2 stay
+  legacy-compatible.
+- The corner-rounding radius now tracks the stroke (capped at its former 26 u).
+  round_corners() opens the shape with that radius, which erases ink thinner
+  than twice it -- a fixed 26 annihilated a light master outright (measured: at
+  stroke 45 the glyph came out with zero area). Regular and every heavier master
+  are bit-identical to before.
+- Glyph corrections, all from constants that did not track the stroke:
+    * j and g -- the stem started at a hard-coded offset that only equalled the
+      stroke at Regular, so the descender hook came away from the stem entirely
+      at the light weights (a 50 u gap at UltraLight).
+    * 8 -- the two bowls had a fixed geometry, so the waist was never exactly one
+      stroke wide: 96 u at Regular, 176 u at Bold, and at UltraLight the walls no
+      longer met at all (two strokes with a gap, reading as one heavy band). The
+      bowls are now sized from the waist outwards, so it is exactly W everywhere.
+    * guillemets -- the two chevrons sat close enough to be welded into a solid
+      blob at Bold weight. tools/redraw_glyphs.py already carried this fix for
+      the normalised Regular; it is back-ported to the generator so every master
+      gets it.
+    * the traced arobase tore in two under the erosion used to bring it down to
+      the UltraLight stroke; the erosion is backed off to just short of tearing.
+- QA: the monoline gate now measures at two pixels per unit. At one pixel per
+  unit the distance transform quantises widths to ~1 u steps -- harmless at 90 u
+  but 2.5 % at the UltraLight's 40 u, where it reported a spurious 42.0 and
+  failed a master whose geometry measures a clean 40.0.
+- The specimen embeds all eight masters as WOFF2 and is generated from the
+  MASTERS table, so it no longer goes stale when a master is added. Eight
+  masters now weigh less than four did as TTF (~119 KB against ~170 KB).
 
 2.007  (2026-07)
 - Three new masters, taking the family from one style to four across two axes:

@@ -9,7 +9,7 @@ A geometric, strictly **monolinear** display sans, derived from the hexagonal
 *alveole* cells of the beeraw honey-brand logo. Flat-topped / flat-bottomed
 hexagonal cells, vertical side edges, bevelled and rounded corners.
 
-- **Version:** 2.007 · four masters across two axes
+- **Version:** 2.008 · eight masters across two axes
 - **Scope:** French / Western-European Latin — ASCII, digits, punctuation,
   guillemets, `œ æ Œ Æ`, the full set of French accents, math signs and
   `€ © ® § ¢ £ ¥ …`
@@ -18,29 +18,47 @@ hexagonal cells, vertical side edges, bevelled and rounded corners.
 
 ## Two axes, one monoline
 
-| family | style | stroke | width |
-| --- | --- | --- | --- |
-| **Beeraw Hex** | Regular / Bold | 90 u / 130 u | normal |
-| **Beeraw Hex Wide** | Regular / Bold | 90 u / 130 u | ×1.35 |
+Four weights × two widths. The stroke `W` is in font units (UPM 1000):
 
-The **weight** axis thickens the monoline (90 → 130 u). The **width** axis grows
+| | UltraLight 100 | Light 300 | Regular 400 | Bold 700 |
+| --- | --- | --- | --- | --- |
+| **Beeraw Hex** | W 40 | W 64 | W 90 | W 130 |
+| **Beeraw Hex Wide** ×1.35 | W 40 | W 64 | W 90 | W 130 |
+
+The **weight** axis thickens the monoline (40 → 130 u). The **width** axis grows
 the round half-widths and the spacing by a factor **without touching the
 stroke**. Because every stem is drawn as a fixed-width bar, neither axis can
 break the monoline: the perpendicular stroke stays at its nominal value at any
-width, by construction. Each width is its own RIBBI family, so Regular and Bold
-link and the bold toggle works within it.
+width, by construction — the QA gate confirms it on all eight masters.
+
+Regular and Bold pair up as a RIBBI family per width, so the bold toggle works.
+UltraLight and Light carry typographic names (nameID 16/17), which regroups the
+four weights under one family in modern apps while staying legacy-compatible.
 
 ## Install
 
 Grab a file from [`fonts/`](fonts/):
 
-| Use | Normal | Wide |
-| --- | --- | --- |
-| Desktop (hinted) | `BeerawHex-Regular.ttf` · `BeerawHex-Bold.ttf` | `BeerawHexWide-Regular.ttf` · `BeerawHexWide-Bold.ttf` |
-| Desktop (CFF) | `BeerawHex-*.otf` | `BeerawHexWide-*.otf` |
-| Web | `BeerawHex-*.woff2` (+ `.woff`) | `BeerawHexWide-*.woff2` (+ `.woff`) |
+Each master ships as `.ttf` (hinted desktop), `.otf` (CFF desktop) and
+`.woff2` / `.woff` (web). Stems are `BeerawHex-*` and `BeerawHexWide-*`, with
+`-UltraLight`, `-Light`, `-Regular`, `-Bold`.
 
 ```css
+/* one @font-face per weight, same family name — the browser picks by weight */
+@font-face {
+  font-family: "Beeraw Hex";
+  src: url("BeerawHex-UltraLight.woff2") format("woff2"),
+       url("BeerawHex-UltraLight.woff")  format("woff");
+  font-weight: 100;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Beeraw Hex";
+  src: url("BeerawHex-Light.woff2") format("woff2"),
+       url("BeerawHex-Light.woff")  format("woff");
+  font-weight: 300;
+  font-display: swap;
+}
 @font-face {
   font-family: "Beeraw Hex";
   src: url("BeerawHex-Regular.woff2") format("woff2"),
@@ -59,9 +77,11 @@ Grab a file from [`fonts/`](fonts/):
 
 Declare `"Beeraw Hex Wide"` the same way with the `BeerawHexWide-*` files.
 
-See [`specimen.html`](specimen.html) for the full, self-contained type specimen
-(all four masters embedded). The banner above is rendered from the shipped TTF
-by `tools/make_readme_image.py` (headless Chrome → `images/`).
+See [`specimen.html`](specimen.html) for the full, self-contained type specimen —
+all eight masters embedded as WOFF2, ~119 KB — or [`specimen.pdf`](specimen.pdf)
+to print or pass around. Both are generated (`tools/make_specimen.py`, then
+`tools/make_specimen_pdf.py` prints the page with headless Chrome), as is the
+banner above (`tools/make_readme_image.py` → `images/`).
 
 ## Source-first
 
@@ -71,7 +91,7 @@ edited by hand. There are two build paths:
 - the **base Regular** ships *normalised* (ccmp / gasp / GDEF / hinting, plus a
   few extra Latin glyphs) and is built from the UFO
   **`sources/BeerawHex-Regular.ufo`** by `tools/pipeline.sh`;
-- the **other three masters** come straight from the parametric generator
+- the **other seven masters** come straight from the parametric generator
   **`font_build.py`**, whose `MASTERS` table is the single place where stroke
   (`stroke`) and width (`width_factor`) are defined.
 
@@ -87,8 +107,9 @@ sources/
   esperluette.png
 features/kern.fea          # GPOS kerning
 tools/                     # build + QA pipeline (see below)
-fonts/                     # BUILD ARTIFACTS (ttf / otf / woff2 / woff), 4 masters
-specimen.html              # self-contained type specimen
+fonts/                     # BUILD ARTIFACTS (ttf / otf / woff2 / woff), 8 masters
+specimen.html              # self-contained type specimen (8 masters, WOFF2)
+specimen.pdf               #   …the same page printed, for sharing
 qa/NOTES.md                # fontbakery WARN justifications
 OFL.txt / OFL-FAQ.txt      # SIL Open Font License 1.1
 FONTLOG.txt                # changelog
@@ -102,12 +123,12 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r tools/requirements.txt
 ```
 
-Generator masters (Bold, Wide, Wide Bold) — `tools/build.sh` builds them all,
-packages the web fonts and refreshes the specimen:
+Generator masters (everything except the base Regular) — `tools/build.sh` builds
+them all, packages the web fonts and refreshes the specimen:
 
 ```bash
 tools/build.sh
-python font_build.py Wide      # …or rebuild a single master
+python font_build.py WideLight      # …or rebuild a single master
 ```
 
 Base Regular — edit `sources/BeerawHex-Regular.ufo`, then:
@@ -134,11 +155,11 @@ tools/pipeline.sh && cp build/BeerawHex-Regular.ttf fonts/
 ## The monoline is the DNA
 
 The perpendicular stroke must stay at its master's nominal value everywhere —
-**90 u** at Regular weight, **130 u** at Bold, *whatever the width* (measured by
-distance transform, not horizontal scan). `tools/qa_monoline.py` reads that
+**40 u** at UltraLight through **130 u** at Bold, *whatever the width* (measured
+by distance transform, not horizontal scan). `tools/qa_monoline.py` reads that
 nominal from the font itself (`post.underlineThickness`) and fails the build if
 a glyph's median band leaves the **W-1.5 … W+1.9 u** window, so the Regular
-keeps its historical 88.5–91.9 gate. All four masters pass; any cleanup must
+keeps its historical 88.5–91.9 gate. All eight masters pass; any cleanup must
 keep the gate green.
 
 ```bash
