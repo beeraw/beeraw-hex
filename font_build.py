@@ -14,7 +14,38 @@ from fontTools.ttLib.tables import ttProgram
 from fontTools.feaLib.builder import addOpenTypeFeatures
 from fontTools.misc.transform import Offset
 
-VERSION = "1.0"             # semantic version; drives name ID 5 and head.fontRevision
+VERSION = "2.007"       # semantic version; drives name ID 5 and head.fontRevision
+
+# ---- two design axes: WEIGHT (stroke) × WIDTH (proportion) ----
+# The monoline IS the ADN, so NEITHER axis touches the perpendicular stroke:
+#   * a heavier WEIGHT is just a thicker monoline (W: 90 -> 130);
+#   * a WIDER master keeps W and grows the round half-widths (RW/CRW/DRW) and
+#     the spacing by a width_factor — counters open, stems stay 90.
+# Because every stem is drawn as a fixed-W bar/stroke, widening can't thicken it:
+# the monoline gate holds by construction at any width_factor.
+#
+# Masters ship as RIBBI families: "Beeraw Hex" (Regular+Bold) and the wider
+# "Beeraw Hex Wide" (Regular+Bold), width_factor 1.35 (a confident wide that
+# stays elegant short of an "extended").
+def _master(family, style, stroke, width_factor, weight_class, width_class,
+            panose_weight, bold, filename, amp_buf, at_buf):
+    return dict(family=family, style=style, stroke=stroke, width_factor=width_factor,
+                weight_class=weight_class, width_class=width_class,
+                panose_weight=panose_weight, bold=bold, filename=filename,
+                amp_buf=amp_buf, at_buf=at_buf)
+
+MASTERS = {
+    "Regular":  _master("Beeraw Hex",      "Regular", 90,  1.00, 400, 5, 5, False,
+                        "BeerawHex-Regular",     amp_buf=7,  at_buf=0),
+    "Bold":     _master("Beeraw Hex",      "Bold",    130, 1.00, 700, 5, 8, True,
+                        "BeerawHex-Bold",        amp_buf=32, at_buf=25),
+    "Wide":     _master("Beeraw Hex Wide", "Regular", 90,  1.35, 400, 7, 5, False,
+                        "BeerawHexWide-Regular", amp_buf=7,  at_buf=0),
+    "WideBold": _master("Beeraw Hex Wide", "Bold",    130, 1.35, 700, 7, 8, True,
+                        "BeerawHexWide-Bold",    amp_buf=32, at_buf=25),
+}
+# back-compat alias (older tooling / docs referred to the weight-only table)
+WEIGHTS = MASTERS
 
 # ---- vertical metrics (Phase 6) ----
 # fontbakery's googlefonts profile (os2_metrics_match_hhea + typoAscender>yMax)
@@ -31,8 +62,15 @@ XH   = 500          # x-height
 CAP  = 700          # cap height
 ASC  = 735          # ascender top (b d f h k l)
 DESC = -215         # descender bottom (g j p q y)
-W    = 90           # stroke width
+W    = 90           # stroke width  (WEIGHT axis: 90 Regular, 130 Bold)
+WF   = 1.0          # width factor  (WIDTH axis: 1.00 normal, 1.35 Wide)
 SB   = 46           # side bearing
+
+# traced glyphs (& @) are pre-vectorised and can't be re-drawn at the stroke, so
+# they're brought up to the current weight by an outward buffer. These knobs are
+# reset per master by _apply_master(); the defaults reproduce the Regular master.
+AMP_BUF = 7         # ampersand thickening (source drawing sits below the monoline)
+AT_BUF  = 0         # arobase thickening (source drawing already at Regular weight)
 RAD  = 26           # corner rounding radius
 MIT  = dict(join_style=2, mitre_limit=12)
 RES  = 6            # buffer resolution for rounded corners
@@ -46,7 +84,10 @@ OV_UC = 11          # capital rounds (O C Q) and round digits (0)
 OV_PT = 8           # pointed apices (A V W v w)
 
 # ---------- primitives ----------
-def cell(cx, cy, rh, rw, sh=0.58, topf=0.42):
+SH = 0.58           # cell(): vertical-side half-height as a fraction of rh
+                    # (a true constant — never per-master, safe as a default arg)
+
+def cell(cx, cy, rh, rw, sh=SH, topf=0.42):
     """alveole: flat top/bottom, vertical sides, bevelled corners (zero point)."""
     tf = rw * topf
     return Polygon([
@@ -69,7 +110,9 @@ def vbar(xl, y0, y1):
 def hbar(x0, x1, yb):
     return box(x0, yb, x1, yb + W)
 
-def dstroke(p0, p1, w=W):
+def dstroke(p0, p1, w=None):
+    # resolved at call time, not bound at import (W changes per master)
+    w = W if w is None else w
     ang = math.degrees(math.atan2(p1[1] - p0[1], p1[0] - p0[0]))
     length = math.hypot(p1[0] - p0[0], p1[1] - p0[1])
     s = box(0, -w / 2, length, w / 2)
@@ -121,15 +164,40 @@ def q():
 def o():
     return ring(cell(RW, 250, 250 + OV_LC, RW))
 
+def _aperture(rh, k):
+    """Mouth half-height for the C/c family, bounded by BOTH limits:
+
+      * the counter (rh - W)  — a fixed mouth overflows it as soon as the wall
+        thickens (Bold: counter 129 vs the old hard-coded 150) and starts biting
+        into the ring's top/bottom bars, which is what made the terminals
+        protrude and mismatch;
+      * the cell's vertical-side span (SH * rh) — keeps the cut inside the
+        straight wall, so the terminal is a clean vertical face and the letter
+        keeps its full width at every weight (bounding by the counter alone made
+        the Regular c 360 u wide against the Bold's 398).
+    """
+    return min(SH * rh, rh - W) * k
+
+AP_LC = 0.96        # lowercase c
+AP_UC = 0.81        # uppercase C (170 / 209.4)
+
 def c():
-    g = ring(cell(RW, 250, 250 + OV_LC, RW))
-    mouth = box(RW + 20, 250 - 150, 2 * RW + 30, 250 + 150)
+    rh = 250 + OV_LC
+    g = ring(cell(RW, 250, rh, RW))
+    ap = _aperture(rh, AP_LC)
+    mouth = box(RW + 20, 250 - ap, 2 * RW + 30, 250 + ap)
     return g.difference(mouth)
 
 def e():
-    outer = cell(RW, 250, 250 + OV_LC, RW)
+    rh = 250 + OV_LC
+    outer = cell(RW, 250, rh, RW)
     g = U(ring(outer), box(0, 250 - W / 2, 2 * RW, 250 + W / 2))
-    mouth = box(RW - 10, 250 - 150, 2 * RW + 30, 250 - W / 2)
+    # Same bounded aperture as the c: a fixed 150 dropped below the counter once
+    # the wall thickened (Bold: counter bottom 121 vs mouth bottom 100) and cut
+    # into the bottom arc, leaving a burr on the terminal. Sharing AP_LC also
+    # puts the e's terminal at exactly the c's height.
+    ap = _aperture(rh, AP_LC)
+    mouth = box(RW - 10, 250 - ap, 2 * RW + 30, 250 - W / 2)
     return g.difference(mouth)
 
 def n():
@@ -182,14 +250,14 @@ def l():
 def f():
     fx = 90
     stem = vbar(fx, 0, ASC)
-    arm = hbar(fx, fx + 220, ASC - W)          # abrupt right-angle top (like the foot of j)
-    cross = hbar(-10, fx + 195, XH - W / 2)
+    arm = hbar(fx, fx + round(220 * WF), ASC - W)   # abrupt right-angle top (like the foot of j)
+    cross = hbar(-10, fx + round(195 * WF), XH - W / 2)  # arm reach follows the WIDTH axis
     return U(stem, arm, cross)
 
 def t():
     stem = vbar(90, 0, XH + 160)
-    cross = hbar(-10, 320, XH - W / 2)
-    foot = hbar(90, 90 + 150, 0)
+    cross = hbar(-10, round(320 * WF), XH - W / 2)   # crossbar & foot widen with the master
+    foot = hbar(90, 90 + round(150 * WF), 0)
     return U(stem, cross, foot)
 
 def k():
@@ -229,20 +297,31 @@ def z():
 
 def _s_shape(rw, ty, by, ov=0):
     h = ty - by
-    bh = h * 0.33
+    # The bowl must keep a real counter. h*0.33 is a pure proportion, so at Bold
+    # the 130 u wall eats it down to ~35 u: the inner octagon degenerates into
+    # nothing but bevels and the two apertures come out stair-stepped and
+    # mismatched. Floor the bowl so the counter never drops below the Regular's
+    # 75 u — this leaves the Regular s / S / $ untouched (their proportion
+    # already wins) and only opens up the bold lowercase s.
+    bh = max(h * 0.33, W + 75)
     cx = rw
     # overshoot: translate the top/bottom bowls out by ov (radius, hence the
     # 90 u stroke, is unchanged); the spine join at midy stays put.
     ucy = ty - bh + ov
     lcy = by + bh - ov
     midy = (ty + by) / 2
+    # Each aperture is the union of the bowl's counter and the box that opens it,
+    # so the box edge must land exactly on the counter's edge (ucy + bh - W) or
+    # the two leave a step. The old bh*0.45 only matched by luck at Regular, where
+    # (bh-W)/bh = 0.4545; at Bold it drifts to 0.37 and stair-steps the terminals.
+    inner = bh - W                                    # counter half-height
     # top arc: keep the LEFT half of the upper bowl + a short top-right terminal
     up = ring(cell(cx, ucy, bh, rw))
-    up = up.difference(box(cx, midy, 2 * rw + 60, ucy + bh * 0.45))   # open the middle-right (keep top curl)
+    up = up.difference(box(cx, midy, 2 * rw + 60, ucy + inner))       # open the middle-right (keep top curl)
     up = clip(up, midy - W / 2, ty + ov + 60)                        # clip at the spine, no hanging nub
     # bottom arc: mirror
     lo = ring(cell(cx, lcy, bh, rw))
-    lo = lo.difference(box(-60, lcy - bh * 0.45, cx, midy))           # open the middle-left (keep bottom curl)
+    lo = lo.difference(box(-60, lcy - inner, cx, midy))               # open the middle-left (keep bottom curl)
     lo = clip(lo, by - ov - 60, midy + W / 2)
     mid = box(0, midy - W / 2, 2 * rw, midy + W / 2)
     return U(up, lo, mid)
@@ -255,14 +334,23 @@ CH = CAP
 CRW = 250           # cap round half-width
 CCY = CAP / 2
 
-def C_ring(rw=CRW):
+def C_ring(rw=None):
+    # NB: resolve CRW at CALL time. As a default argument it would be bound once
+    # at import (CRW=250), so O and C would keep the normal width in every Wide
+    # master while every other cap widened.
+    rw = CRW if rw is None else rw
     return ring(cell(rw, CCY, CCY + OV_UC, rw))
 
 def A():
     apex = CRW
-    g = U(dstroke((0, 0), (apex, CAP + 20), W), dstroke((2 * apex, 0), (apex, CAP + 20), W),
-          hbar(60, 2 * apex - 60, CAP * 0.34))
-    return clip(g, 0, CAP + OV_PT)
+    diag = U(dstroke((0, 0), (apex, CAP + 20), W),
+             dstroke((2 * apex, 0), (apex, CAP + 20), W))
+    # The crossbar is trimmed to the legs' own silhouette (their convex hull), so
+    # its ends land flush on the diagonals instead of poking out. A fixed x-range
+    # would protrude as soon as the legs splay (wide) or thicken (bold), because
+    # the legs sit further in at the bar's TOP edge than at its bottom.
+    bar = hbar(-200, 2 * apex + 200, CAP * 0.34).intersection(diag.convex_hull)
+    return clip(U(diag, bar), 0, CAP + OV_PT)
 
 def B():
     mid = CCY
@@ -276,9 +364,17 @@ def B():
     outer = U(vbar(0, 0, CAP), ub, lb)
     return outer.difference(ub.buffer(-W, **MIT)).difference(lb.buffer(-W, **MIT))
 
+# The C's bowl relative to the O's. An open shape reads narrower than a closed
+# one at equal width, so the C is drawn 6 % wider to sit optically level with the
+# O (500 -> 530 u at Regular). Classic optical correction, not a metric one.
+C_WIDE = 1.06
+
 def C():
-    g = C_ring()
-    return g.difference(box(CRW + 20, CCY - 170, 2 * CRW + 30, CCY + 170))
+    rw = CRW * C_WIDE
+    rh = CCY + OV_UC
+    g = C_ring(rw)
+    ap = _aperture(rh, AP_UC)                  # weight-safe aperture, like the c
+    return g.difference(box(rw + 20, CCY - ap, 2 * rw + 30, CCY + ap))
 
 def D():
     base = cell(CRW, CCY, CCY, CRW)
@@ -357,9 +453,20 @@ def P():
     bowl, bcy, bh, brw = _pr_bowl()
     return U(stem, bowl).difference(bowl.buffer(-W, **MIT))
 
+TAIL_OUT = 140      # how far the Q tail reaches past the bowl's outer contour
+
 def Q():
-    g = C_ring()
-    tail = dstroke((CRW, CCY), (2 * CRW - 10, -20), W)
+    base = cell(CRW, CCY, CCY + OV_UC, CRW)
+    g = ring(base)
+    counter = base.buffer(-W, **MIT)
+    # A long 45° ray from the bowl centre, then trimmed at BOTH ends:
+    #  - minus the counter, so it can't cut a stub across the inside of the bowl
+    #    (the old tail started at the centre and did exactly that);
+    #  - intersected with the bowl grown by TAIL_OUT, so it always protrudes the
+    #    same amount past the outer edge whatever the width/weight.
+    ray = dstroke((CRW, CCY), (4 * CRW, CCY - 3 * CRW), W)
+    tail = ray.difference(counter).intersection(
+        base.buffer(TAIL_OUT, join_style=1, resolution=RES))
     return U(g, clip(tail, DESC, CCY))
 
 def R():
@@ -377,12 +484,15 @@ def T():
     return U(hbar(0, 2 * CRW, CAP - W), vbar(CRW - W / 2, 0, CAP - W))
 
 def UU():
-    outer = cell(CRW, CCY, CCY, CRW)
-    side_top = CCY + 0.58 * CCY               # where the O's vertical sides end
-    arch = clip(ring(outer), 0, side_top)     # O bottom (bevelled) + vertical sides
-    lstem = vbar(0, side_top - W, CAP)
-    rstem = vbar(2 * CRW - W, side_top - W, CAP)
-    return U(arch, lstem, rstem)
+    # Straight-sided from the shoulder up: the outer shape is the alveole bottom
+    # plus a plain box, so the ring's INNER wall stays vertical all the way to the
+    # top. (The old build clipped the O's ring at the OUTER cell's shoulder and
+    # butted stems onto it — but the inner bevel starts lower, and lower still as
+    # W grows, so it bulged past the stems' inner edge as a nub in the counter.)
+    base = U(cell(CRW, CCY, CCY, CRW), box(0, CCY, 2 * CRW, CAP))
+    g = ring(base)
+    # open the top: drop the bar that would otherwise close the ring between stems
+    return g.difference(box(W, CAP - W - 2, 2 * CRW - W, CAP + 50))
 
 def V():
     g = U(dstroke((0, CAP), (CRW, -30), W), dstroke((2 * CRW, CAP), (CRW, -30), W))
@@ -417,8 +527,11 @@ def n0():
 def n1():
     cx = DRW                                   # stem centre
     stem = vbar(cx - W / 2, 0, CAP)
-    flag = dstroke((cx - W / 2 - 140, CAP - 185), (cx - W / 2, CAP), W)  # longer oblique
-    base = hbar(cx - 160, cx + 160, 0)         # wider base, centred under the stem
+    # flag reach and base half-width follow the WIDTH axis — as plain absolutes
+    # the 1 stayed 369 u wide while every other digit grew to 540 in the Wide
+    # masters, leaving it stunted and under-spaced in figures.
+    flag = dstroke((cx - W / 2 - round(140 * WF), CAP - 185), (cx - W / 2, CAP), W)
+    base = hbar(cx - round(160 * WF), cx + round(160 * WF), 0)   # centred under the stem
     return clip(U(stem, flag, base), 0, CAP)
 
 def n2():
@@ -727,7 +840,7 @@ def ampersand():
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
     poly = Polygon(data["outer"], data["holes"])
-    return poly.buffer(7, join_style=1, resolution=8)   # thicken to match the monoline weight
+    return poly.buffer(AMP_BUF, join_style=1, resolution=8)   # thicken to the current monoline weight
 
 PRESMOOTHED = {"&", "@"}   # already-vectorised glyphs: skip round_corners
 
@@ -736,7 +849,8 @@ def at():
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sources", "arobase.json")
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
-    return Polygon(data["outer"], data["holes"])
+    poly = Polygon(data["outer"], data["holes"])
+    return poly.buffer(AT_BUF, join_style=1, resolution=8) if AT_BUF else poly
 
 # ================= build map =================
 LOWER = dict(a=a, b=b, c=c, d=d, e=e, f=f, g=None, h=h, i=i, j=j, k=k, l=l,
@@ -1063,7 +1177,10 @@ ACCENT_BASE = {
 }
 
 def sidebearings(ch):
-    return SPACING.get(ACCENT_BASE.get(ch, ch), (SB, SB))
+    # spacing opens with the WIDTH axis so a Wide master isn't cramped between
+    # its own widened glyphs (WF=1.0 -> the Regular numbers, unchanged).
+    lsb, rsb = SPACING.get(ACCENT_BASE.get(ch, ch), (SB, SB))
+    return round(lsb * WF), round(rsb * WF)
 
 def name_for(ch):
     """AGLFN glyph name (Phase 7 — no more uniXXXX for named glyphs)."""
@@ -1090,7 +1207,30 @@ def name_for(ch):
     return ch  # ASCII letters keep their own name
 
 
-def build_font(path):
+def _apply_master(cfg):
+    """Point the parametric globals at one master (weight × width). Every glyph
+    function reads W / WA / WF / RW / CRW / DRW / AMP_BUF / AT_BUF at call time,
+    so mutating them here re-draws the whole font at a new stroke AND width — no
+    per-glyph plumbing. The 200/250/200 bases are the Regular round half-widths."""
+    global W, WA, WF, RW, CRW, DRW, AMP_BUF, AT_BUF
+    W = cfg["stroke"]
+    WA = W * 0.82
+    WF = cfg.get("width_factor", 1.0)
+    RW  = round(200 * WF)      # x-height round half-width
+    CRW = round(250 * WF)      # cap round half-width
+    DRW = round(200 * WF)      # digit round half-width
+    AMP_BUF = cfg["amp_buf"]
+    AT_BUF = cfg["at_buf"]
+
+_set_weight = _apply_master   # back-compat alias
+
+
+def build_font(path, cfg=None):
+    if cfg is None:
+        cfg = MASTERS["Regular"]
+    _apply_master(cfg)
+    style = cfg["style"]
+    family = cfg.get("family", "Beeraw Hex")
     empty = TTGlyphPen(None).glyph()
     glyph_order = [".notdef"]
     cmap = {}
@@ -1177,34 +1317,44 @@ def build_font(path):
     fb.setupHorizontalHeader(ascent=V_ASC, descent=-V_DESC, lineGap=0)
 
     # ---- Phase 7: name table ----
+    # RIBBI family: familyName carries the WIDTH ("Beeraw Hex" / "Beeraw Hex
+    # Wide"), styleName the WEIGHT (Regular/Bold), so each width links its own
+    # Regular+Bold pair (nameID 1/2) and bold-toggle works within it.
     fb.setupNameTable({
         "copyright": "Copyright 2026 The Beeraw Hex Project Authors (https://beeraw.yt)",
-        "familyName": "Beeraw Hex",
-        "styleName": "Regular",
-        "fullName": "Beeraw Hex Regular",
-        "psName": "BeerawHex-Regular",
+        "familyName": family,
+        "styleName": style,
+        "fullName": "%s %s" % (family, style),
+        "psName": cfg["filename"],
         "version": "Version %s" % VERSION,
         "manufacturer": "beeraw",
         "designer": "beeraw",
         "vendorURL": "https://beeraw.yt",
         "designerURL": "https://beeraw.yt",
+        # fontbakery's `license` check wants this exact wording — note the colon
+        # before the URL — whenever OFL.txt ships alongside the font.
         "licenseDescription": ("This Font Software is licensed under the SIL Open "
                                "Font License, Version 1.1. This license is available "
-                               "with a FAQ at https://openfontlicense.org"),
+                               "with a FAQ at: https://openfontlicense.org"),
         "licenseInfoURL": "https://openfontlicense.org",
     })
 
     # ---- Phase 6/7: OS/2 ----
     panose = Panose()
-    panose.bFamilyType, panose.bSerifStyle, panose.bWeight, panose.bProportion = 2, 11, 5, 4
+    # bProportion: 4 = Modern (normal), 5 = Very Expanded for the Wide masters.
+    bprop = 5 if cfg.get("width_class", 5) >= 7 else 4
+    panose.bFamilyType, panose.bSerifStyle, panose.bWeight, panose.bProportion = \
+        2, 11, cfg["panose_weight"], bprop
+    # fsSelection: USE_TYPO_METRICS always; BOLD or REGULAR are mutually exclusive.
+    fssel = (1 << 7) | ((1 << 5) if cfg["bold"] else (1 << 6))
     fb.setupOS2(
         version=4,                                                # bit 7 needs OS/2 v4
         sTypoAscender=V_ASC, sTypoDescender=-V_DESC, sTypoLineGap=0,  # == hhea
         usWinAscent=V_ASC, usWinDescent=V_DESC,                   # clipping box
         sxHeight=XH, sCapHeight=CAP,
-        usWeightClass=400, usWidthClass=5,
+        usWeightClass=cfg["weight_class"], usWidthClass=cfg.get("width_class", 5),
         fsType=0,                                                 # Installable (OFL)
-        fsSelection=(1 << 6) | (1 << 7),                          # REGULAR | USE_TYPO_METRICS
+        fsSelection=fssel,
         achVendID="BRAW",
         panose=panose,
     )
@@ -1213,7 +1363,7 @@ def build_font(path):
 
     # semantic version -> head.fontRevision; keep head clean
     fb.font["head"].fontRevision = float(VERSION)
-    fb.font["head"].macStyle = 0
+    fb.font["head"].macStyle = 0x01 if cfg["bold"] else 0        # bit 0 = Bold
 
     # tighten OS/2 metadata against the actual cmap
     os2 = fb.font["OS/2"]
@@ -1244,7 +1394,32 @@ def build_font(path):
     print("saved", path, "glyphs:", len(glyph_order))
 
 if __name__ == "__main__":
+    import sys
     _here = os.path.dirname(os.path.abspath(__file__))
-    _out = os.path.join(_here, "fonts", "BeerawHex-Regular.ttf")
-    os.makedirs(os.path.dirname(_out), exist_ok=True)
-    build_font(_out)
+    _outdir = os.path.join(_here, "fonts")
+    os.makedirs(_outdir, exist_ok=True)
+    _force = "--force" in sys.argv
+    # build every master (or just the ones named on the command line)
+    _wanted = [a for a in sys.argv[1:] if a in MASTERS] or list(MASTERS)
+
+    # Safety net: some masters ship a *normalised* build (tools/pipeline.sh adds
+    # ccmp/gasp/GDEF/hinting + extra glyphs, bumping the glyph count well past the
+    # generator's raw output). Don't silently regress those to the raw generator
+    # font — skip them unless --force is given.
+    def _is_normalised(path):
+        if not os.path.exists(path):
+            return False
+        try:
+            from fontTools.ttLib import TTFont
+            return TTFont(path)["maxp"].numGlyphs > 160
+        except Exception:
+            return False
+
+    for _style in _wanted:
+        _cfg = MASTERS[_style]
+        _target = os.path.join(_outdir, _cfg["filename"] + ".ttf")
+        if _is_normalised(_target) and not _force:
+            print(f"skip {_cfg['filename']}: shipped master is normalised "
+                  f"(rebuild it via tools/pipeline.sh, or pass --force)")
+            continue
+        build_font(_target, _cfg)

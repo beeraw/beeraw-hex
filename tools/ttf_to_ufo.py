@@ -14,7 +14,7 @@ Faithful reconstruction:
   * composites kept as components (accented letters stay base + mark.comp).
   * unicodes, advance widths, glyph order preserved.
   * a full fontinfo.plist copied from the TTF's head/hhea/OS/2/post/name, with
-    the version set to 1.000.
+    the version bumped to 2.001.
 
 Usage:  python tools/ttf_to_ufo.py [in.ttf] [out.ufo]
 """
@@ -24,7 +24,7 @@ from fontTools.ttLib import TTFont
 from fontTools.pens.qu2cuPen import Qu2CuPen
 
 MAX_ERR = 0.1          # faithful: keep the cubic UFO within 0.1 u of the TTF
-NEW_VERSION = (1, 0)   # v1.000 (versionMajor, versionMinor)
+NEW_VERSION = (2, 7)   # released version (versionMajor, versionMinor)
 
 # Set rather than copied from the baseline: fontbakery's `license` check wants
 # this exact wording (note the colon before the URL) when OFL.txt is present.

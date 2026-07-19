@@ -24,11 +24,24 @@ Exit code 0 = pass, 1 = fail (band exceeded).
 import sys
 import numpy as np
 from PIL import ImageFont
+from fontTools.ttLib import TTFont
 from scipy.ndimage import distance_transform_edt, maximum_filter
 
-BAND_MIN, BAND_MAX = 88.5, 91.9
+# The gate is anchored on the weight's nominal stroke W (90 Regular, 130 Bold),
+# which each master stamps into post.underlineThickness. The tolerance band is
+# the Regular acceptance window (W-1.5 .. W+1.9) carried across weights, so the
+# 90 master keeps its exact historical 88.5-91.9 gate.
+BAND_LO, BAND_HI = -1.5, 1.9
 EM = 1000  # render 1 px == 1 unit
 PAD = 16
+
+
+def nominal_stroke(path):
+    """The weight's target stroke, read from post.underlineThickness (== W)."""
+    try:
+        return float(TTFont(path)["post"].underlineThickness) or 90.0
+    except Exception:
+        return 90.0
 
 CORE = ("abcdefghijklmnopqrstuvwxyz"
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -57,6 +70,8 @@ def glyph_median_width(font, ch):
 
 def main(path):
     font = ImageFont.truetype(path, EM)
+    W = nominal_stroke(path)
+    band_min, band_max = W + BAND_LO, W + BAND_HI
 
     def measure(chars):
         out = {}
@@ -71,11 +86,11 @@ def main(path):
     p5, p50, p95 = (np.percentile(med, 5), np.percentile(med, 50), np.percentile(med, 95))
 
     print(f"== Monoline stroke QA  ({path}) ==")
-    print(f"core glyphs measured : {len(core)}")
-    print(f"per-glyph median band: p5={p5:.1f}  p50={p50:.1f}  p95={p95:.1f}  (target [{BAND_MIN}, {BAND_MAX}])")
+    print(f"core glyphs measured : {len(core)}  (nominal stroke W={W:.0f})")
+    print(f"per-glyph median band: p5={p5:.1f}  p50={p50:.1f}  p95={p95:.1f}  (target [{band_min:.1f}, {band_max:.1f}])")
 
     # widest deviations, for the eye
-    dev = sorted(core.items(), key=lambda kv: abs(kv[1][0] - 90))[::-1][:6]
+    dev = sorted(core.items(), key=lambda kv: abs(kv[1][0] - W))[::-1][:6]
     print("most deviant core glyphs:", ", ".join(f"{c}={v[0]:.1f}" for c, v in dev))
 
     acc = measure(ACCENTED)
@@ -86,7 +101,7 @@ def main(path):
     if oth:
         print("punct/lig (info only):", ", ".join(f"{c}={v[0]:.0f}" for c, v in oth.items()))
 
-    ok = BAND_MIN <= p5 and p95 <= BAND_MAX
+    ok = band_min <= p5 and p95 <= band_max
     print("RESULT:", "PASS" if ok else "FAIL — monoline band exceeded")
     return 0 if ok else 1
 

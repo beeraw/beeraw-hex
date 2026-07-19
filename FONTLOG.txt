@@ -14,13 +14,54 @@ sans derived from the hexagonal "alveole" cells of the beeraw honey brand
 logo. Flat-topped / flat-bottomed hexagonal cells, vertical side edges,
 bevelled and rounded corners.
 
-The source of truth is a UFO: sources/BeerawHex-Regular.ufo (+ features.fea).
-The files in fonts/ (TTF, OTF, WOFF2, WOFF) are build artifacts, regenerated
-from the source and never edited by hand. See README.md for the build steps.
+The family spans two axes: weight (stroke 90 / 130 units) and width (normal /
+Wide, x1.35). Neither axis touches the perpendicular stroke, which stays at its
+master's nominal value everywhere -- that monoline is the DNA of the design.
+
+There are two build paths. The base Regular ships normalised and is built from
+the UFO sources/BeerawHex-Regular.ufo (+ features.fea); the other three masters
+come straight from the parametric generator font_build.py. The files in fonts/
+(TTF, OTF, WOFF2, WOFF) are build artifacts, regenerated from the source and
+never edited by hand. See README.md for the build steps.
 
 
 ChangeLog
 ---------
+
+2.007  (2026-07)
+- Three new masters, taking the family from one style to four across two axes:
+  Beeraw Hex Bold, plus the wider family Beeraw Hex Wide (Regular and Bold).
+  Each width is its own RIBBI family (usWidthClass 5 / 7).
+- Weight axis: the Bold is simply a heavier monoline -- same skeleton, same
+  advances, same kerning, stroke 90 -> 130 units.
+- Width axis: the Wide masters keep the stroke and grow the round half-widths
+  and the spacing by 1.35. Because every stem is drawn as a fixed-width bar,
+  widening cannot thicken it: the monoline gate holds by construction.
+- The parametric generator gained a MASTERS table (stroke x width_factor) as the
+  single place both axes are defined.
+- Glyph corrections, all fixed at the source and therefore across every master.
+  Each came from a constant that did not track the stroke or the width:
+    * A -- the crossbar overshot the legs (its x-range was fixed while the legs
+      move inward as the letter widens); it is now trimmed to the legs' own
+      silhouette, so it lands flush at any width or weight.
+    * U -- nubs protruded into the counter, because the ring was clipped at the
+      OUTER shoulder while the inner bevel starts lower, and lower still as the
+      stroke thickens. Rebuilt with straight sides to the top.
+    * Q -- the tail started at the centre of the bowl and cut across the counter
+      while barely emerging outside. It is now trimmed at both ends: minus the
+      counter, and bounded to a constant protrusion past the outer edge.
+    * s -- mismatched, stair-stepped terminals in bold: the bowl kept a pure
+      proportion, so the wall ate the counter down to 35 u, and the aperture box
+      was aligned on a ratio that only matched the Regular by coincidence.
+    * c and e -- protruding, uneven terminals in bold: a fixed aperture height
+      overflowed the counter once the wall thickened and bit into the ring's
+      arcs. Both are now bounded by the counter AND the straight-wall span.
+    * C -- widened 6 % against the O (an optical correction: an open shape reads
+      narrower than a closed one at equal width).
+    * O, C and the digit 1 did not follow the width axis at all -- O and C
+      because the bowl radius was bound as a Python default argument (evaluated
+      once at import), the 1 because its base and flag were absolute.
+- Version unified at 2.007 across all four masters.
 
 1.000  (2026-07)
 - Initial public release. One style (Regular), 172 glyphs.

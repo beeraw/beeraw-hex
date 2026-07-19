@@ -67,11 +67,18 @@ def flavor(ttf_path, out_path, flav):
 
 def main():
     import sys
-    ttf = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else TTF
-    outdir = os.path.dirname(ttf)
-    stem = os.path.join(outdir, "BeerawHex-Regular")
-    if not os.path.exists(ttf):
-        raise SystemExit(f"build the TTF first ({ttf})")
+    # each TTF named on the command line (default: the Regular master) is
+    # expanded to OTF + WOFF2 + WOFF alongside itself, keeping its own stem
+    # (BeerawHex-Regular, BeerawHex-Bold, ...).
+    ttfs = [os.path.abspath(a) for a in sys.argv[1:]] or [TTF]
+    for ttf in ttfs:
+        if not os.path.exists(ttf):
+            raise SystemExit(f"build the TTF first ({ttf})")
+        stem = os.path.splitext(ttf)[0]
+        _one(ttf, stem)
+
+
+def _one(ttf, stem):
     ttf_to_otf(ttf, stem + ".otf")
     print("wrote", stem + ".otf")
     try:

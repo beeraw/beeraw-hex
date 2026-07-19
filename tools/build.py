@@ -3,7 +3,7 @@
 
   1. compile UFO -> TTF via ufo2ft/cu2qu at the chosen tolerance (1.0 u).
   2. strip Macintosh (platform 1) name records -> fixes universal no_mac_entries.
-  3. normalise name ID 5 to "Version 1.000".
+  3. normalise name ID 5 to "Version 2.007".
   4. autohint with ttfautohint (documented params).
 
 Output: build/BeerawHex-Regular.ttf
@@ -47,8 +47,8 @@ def fix_version_name(ttf, major, minor):
 
 def build(tol, do_hint):
     ufo = ufoLib2.Font.open("sources/BeerawHex-Regular.ufo")
-    major = ufo.info.versionMajor or 1
-    minor = ufo.info.versionMinor or 0
+    major = ufo.info.versionMajor or 2
+    minor = ufo.info.versionMinor or 7
 
     # keep the UFO's AGL glyph names (eacute, egrave, ...) rather than rewriting
     # them to uniXXXX production names — the shipped baseline used AGL names.

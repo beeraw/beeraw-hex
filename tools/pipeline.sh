@@ -15,6 +15,9 @@ cd "$(dirname "$0")/.."
 PY="${PYTHON:-.venv/bin/python}"
 
 echo ">> 1/5  reconstruct UFO from TTF"
+# baseline-2.004 = the generator's raw Regular with the A/Q/U/s corrections
+# (2.000 is kept as history). Regenerate it with:
+#   python -c "import font_build as fb; fb.build_font('sources/baseline.ttf', fb.MASTERS['Regular'])"
 "$PY" tools/ttf_to_ufo.py sources/baseline.ttf sources/BeerawHex-Regular.ufo
 echo ">> 2/5  add monoline-clean Latin glyphs (¢ £ ¥ ¨ ¯ ´ ¸)"
 "$PY" tools/draw_latin_core.py

@@ -10,10 +10,18 @@ import base64
 import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TTF = os.path.join(ROOT, "fonts", "BeerawHex-Regular.ttf")
+FONTS = os.path.join(ROOT, "fonts")
 OUT = os.path.join(ROOT, "specimen.html")
 
-b64 = base64.b64encode(open(TTF, "rb").read()).decode("ascii")
+
+def embed(name):
+    return base64.b64encode(open(os.path.join(FONTS, name), "rb").read()).decode("ascii")
+
+
+b64 = embed("BeerawHex-Regular.ttf")
+b64_bold = embed("BeerawHex-Bold.ttf")
+b64_wide = embed("BeerawHexWide-Regular.ttf")
+b64_wide_bold = embed("BeerawHexWide-Bold.ttf")
 
 HTML = """<!doctype html>
 <html lang="fr">
@@ -26,6 +34,21 @@ HTML = """<!doctype html>
   font-family: 'Beeraw Hex';
   src: url(data:font/ttf;base64,{b64}) format('truetype');
   font-weight: 400; font-style: normal; font-display: block;
+}}
+@font-face {{
+  font-family: 'Beeraw Hex';
+  src: url(data:font/ttf;base64,{b64_bold}) format('truetype');
+  font-weight: 700; font-style: normal; font-display: block;
+}}
+@font-face {{
+  font-family: 'Beeraw Hex Wide';
+  src: url(data:font/ttf;base64,{b64_wide}) format('truetype');
+  font-weight: 400; font-style: normal; font-display: block;
+}}
+@font-face {{
+  font-family: 'Beeraw Hex Wide';
+  src: url(data:font/ttf;base64,{b64_wide_bold}) format('truetype');
+  font-weight: 700; font-style: normal; font-display: block;
 }}
 :root {{
   --bg: #faf9f5; --ink: #1c1a16; --muted: #9a8f7d; --line: #e7e0d2;
@@ -66,6 +89,12 @@ h2 {{ font-family: ui-monospace, monospace; font-weight: 400; font-size: 12px;
 .card .cap {{ font-family: ui-monospace, monospace; font-size:11px; color:var(--muted);
               letter-spacing:.06em; margin-top:.4rem; }}
 .amp {{ font-size: clamp(120px, 28vw, 300px); line-height:.8; }}
+.wt {{ line-height: 1.02; margin:.08em 0; letter-spacing:-.005em; font-size: clamp(40px, 9vw, 92px); }}
+.wt .lbl {{ display:inline-block; width:5.5ch; font-family: ui-monospace, monospace;
+            font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+            color:var(--muted); vertical-align:middle; }}
+.b {{ font-weight: 700; }}
+.wide {{ font-family: 'Beeraw Hex Wide', system-ui, sans-serif; }}
 .caps-acc {{ font-size: clamp(30px, 6vw, 58px); letter-spacing:.02em; }}
 footer {{ margin-top: 6rem; border-top:1px solid var(--line); padding-top:1.4rem;
           font-family: ui-monospace, monospace; font-size:12px; color:var(--muted);
@@ -76,9 +105,29 @@ a {{ color: var(--amber); }}
 <body>
 <div class="wrap">
 
-  <p class="tag">Fonte alvéolaire monolinéaire · 90 u · beeraw</p>
+  <p class="tag">Fonte alvéolaire monolinéaire · Regular 90 u / Bold 130 u · beeraw</p>
   <div class="masthead"><span class="hl">b</span>ee<span class="hl">r</span>aw·hex</div>
-  <p class="sub">Un display géométrique hexagonal.</p>
+  <p class="sub">Un display géométrique hexagonal, en deux graisses.</p>
+
+  <section>
+    <h2>Graisses</h2>
+    <div class="wt"><span class="lbl">Reg 90</span>beeraw hexagone</div>
+    <div class="wt b"><span class="lbl">Bold 130</span>beeraw hexagone</div>
+    <p class="para small">La monoline est l'ADN : le Bold n'est pas un dessin à
+    part, c'est la même ossature — mêmes chasses, même crénage — dont le trait
+    passe de 90 à 130 unités. Famille RIBBI : <b class="b">gras</b> lié au normal.</p>
+  </section>
+
+  <section>
+    <h2>Chasses — beeraw hex wide</h2>
+    <div class="wt"><span class="lbl">Normal</span>hexagone</div>
+    <div class="wt wide"><span class="lbl">Wide</span>hexagone</div>
+    <div class="wt wide b"><span class="lbl">Wide·B</span>hexagone</div>
+    <p class="para small wide">« Beeraw Hex Wide » élargit la chasse de 35 % —
+    demi-largeurs des ronds et espacement — <b class="b">sans toucher au trait</b> :
+    il reste rigoureusement à 90 u (130 u en gras). Les alvéoles s'ouvrent, la
+    monoline tient par construction. Famille distincte, en Regular et Bold.</p>
+  </section>
 
   <section>
     <h2>Jeu de caractères</h2>
@@ -87,7 +136,7 @@ a {{ color: var(--amber); }}
       <span class="lbl">Bas de casse</span>abcdefghijklmnopqrstuvwxyz
       <span class="lbl">Chiffres &amp; signes</span>0123456789 &nbsp; + − = &lt; &gt; % ° $ ¢ £ ¥ € © •
       <span class="lbl">Accents</span>àâäéèêëîïôöùûüÿç ÀÂÄÉÈÊËÎÏÔÖÙÛÜŸÇ œ æ Œ Æ
-      <span class="lbl">Diacritiques</span>´ ¨ ¯ ¸ ¢ £ ¥
+      <span class="lbl">Diacritiques</span>´ ¨ ¯ ¸ &nbsp; <span class="lbl">v2.001</span>¢ £ ¥ (nouveaux)
       <span class="lbl">Ponctuation &amp; symboles</span>. , ; : ! ? ¡ ¿ … – — · &nbsp; « » ‹ › ' ' " " &nbsp; ( ) [ ] {{ }} / \\ | @ # &amp; * _ ^ ~ `
     </div>
   </section>
@@ -132,7 +181,7 @@ a {{ color: var(--amber); }}
       <div class="card"><div class="big">12,50 €</div><div class="cap">euro</div></div>
       <div class="card"><div class="big">TVA 20 %</div><div class="cap">pourcent</div></div>
       <div class="card"><div class="big">© 2026</div><div class="cap">copyright</div></div>
-      <div class="card"><div class="big">£12 ¢5 ¥9</div><div class="cap">devises</div></div>
+      <div class="card"><div class="big">£12 ¢5 ¥9</div><div class="cap">devises (v2.001)</div></div>
       <div class="card"><div class="big">Réf. #42</div><div class="cap">dièse</div></div>
     </div>
   </section>
@@ -152,6 +201,7 @@ a {{ color: var(--amber); }}
 </html>
 """
 
-open(OUT, "w", encoding="utf-8").write(HTML.format(b64=b64))
-kb = (len(HTML) + len(b64)) / 1024
-print(f"wrote {OUT}  (~{kb:.0f} KB, font embedded)")
+open(OUT, "w", encoding="utf-8").write(HTML.format(
+    b64=b64, b64_bold=b64_bold, b64_wide=b64_wide, b64_wide_bold=b64_wide_bold))
+kb = (len(HTML) + len(b64) + len(b64_bold) + len(b64_wide) + len(b64_wide_bold)) / 1024
+print(f"wrote {OUT}  (~{kb:.0f} KB, 4 masters embedded)")
