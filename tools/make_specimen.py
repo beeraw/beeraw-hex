@@ -101,6 +101,10 @@ h2 {{ font-family: ui-monospace, monospace; font-weight: 400; font-size: 12px;
 .b {{ font-weight: 700; }}
 .w100 {{ font-weight: 100; }} .w300 {{ font-weight: 300; }} .w400 {{ font-weight: 400; }}
 .wide {{ font-family: 'Beeraw Hex Wide', system-ui, sans-serif; }}
+/* the Wide ladder carries the same string 35% wider — scale it down so the
+   Bold row still fits on one line at the same measure as the normal ladder */
+.wide .wt {{ font-size: clamp(30px, 6.6vw, 68px); }}
+.wide .caps-acc {{ font-size: clamp(24px, 4.4vw, 43px); }}
 .axis {{ display:grid; grid-template-columns: 1fr 1fr; gap: 0 2.2rem; }}
 .axis h3 {{ font-family: ui-monospace, monospace; font-weight:400; font-size:11px;
             letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
@@ -157,6 +161,19 @@ a {{ color: var(--amber); }}
     graisse et n'importe quelle chasse.</p>
   </section>
 
+  <section class="wide">
+    <h2>Beeraw Hex Wide — les quatre graisses</h2>
+    <div class="wt w100"><span class="lbl">100 · 40</span>beeraw hexagone</div>
+    <div class="wt w300"><span class="lbl">300 · 64</span>beeraw hexagone</div>
+    <div class="wt w400"><span class="lbl">400 · 90</span>beeraw hexagone</div>
+    <div class="wt b"><span class="lbl">700 · 130</span>beeraw hexagone</div>
+    <div class="caps-acc" style="margin-top:1.2rem">ÊTRE · OÙ · NAÎTRE · ÇA · ŒUVRE</div>
+    <p class="para small">La même ossature, étalée : les demi-largeurs des ronds
+    et les approches gagnent 35 %, les fûts ne bougent pas d'un dixième d'unité.
+    Comparez le « o » et le « g » avec ceux de la chasse normale ci-dessus — le
+    trait est identique, seul l'espace intérieur respire.</p>
+  </section>
+
   <section>
     <h2>Jeu de caractères</h2>
     <div class="set">
@@ -177,6 +194,8 @@ a {{ color: var(--amber); }}
       <div class="s40">Le vif zéphyr jubile sur les kumquats du clown</div>
       <div class="s28">Dès Noël où un zéphyr haï me vêt de glaçons würmiens</div>
       <div class="s20">Voyez le brick géant que j'examine près du wharf — 20 % de réduction !</div>
+      <div class="s40 wide" style="margin-top:.5em">Le vif zéphyr jubile — en Wide</div>
+      <div class="s28 wide">Dès Noël où un zéphyr haï me vêt de glaçons würmiens</div>
     </div>
   </section>
 
@@ -211,6 +230,9 @@ a {{ color: var(--amber); }}
       <div class="card"><div class="big">© 2026</div><div class="cap">copyright</div></div>
       <div class="card"><div class="big">£12 ¢5 ¥9</div><div class="cap">devises (v2.001)</div></div>
       <div class="card"><div class="big">Réf. #42</div><div class="cap">dièse</div></div>
+      <div class="card wide"><div class="big">AVANT</div><div class="cap">crénage AV / NT — Wide</div></div>
+      <div class="card wide"><div class="big">cœur œuvre</div><div class="cap">ligatures œ — Wide</div></div>
+      <div class="card wide"><div class="big">12,50 €</div><div class="cap">euro — Wide</div></div>
     </div>
   </section>
 
