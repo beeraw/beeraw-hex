@@ -125,6 +125,13 @@
       <string>periodcentered</string>
       <string>bullet</string>
       <string>minus</string>
+      <string>cent</string>
+      <string>sterling</string>
+      <string>yen</string>
+      <string>dieresis</string>
+      <string>macron</string>
+      <string>acute</string>
+      <string>cedilla</string>
       <string>dotlessi</string>
       <string>acute.comp</string>
       <string>grave.comp</string>
@@ -163,13 +170,6 @@
       <string>Udieresis</string>
       <string>Ydieresis</string>
       <string>Ccedilla</string>
-      <string>cent</string>
-      <string>sterling</string>
-      <string>yen</string>
-      <string>dieresis</string>
-      <string>macron</string>
-      <string>acute</string>
-      <string>cedilla</string>
     </array>
     <key>public.openTypeCategories</key>
     <dict>

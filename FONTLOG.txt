@@ -29,6 +29,22 @@ never edited by hand. See README.md for the build steps.
 ChangeLog
 ---------
 
+2.011  (2026-10)
+- All eight masters are now complete and identical in scope: 172 glyphs, accent
+  composition (ccmp), GDEF, gasp and ttfautohint hinting with the Regular's
+  parameters. Everything comes from the generator; the Regular keeps its own
+  path (cubic UFO, normalised outlines).
+- The currency signs and spacing diacritics (cent, sterling, yen, dieresis,
+  macron, acute, cedilla) exist in every master and are drawn in font_build.py,
+  where they follow the stroke and the width (they used to exist in the Regular
+  only, at fixed coordinates). The sterling is rebuilt as a bent stroke with
+  the f's bevelled shoulder.
+- Combining marks (U+0300 0301 0302 0308 0327) and the dotted circle (U+25CC)
+  in every master.
+- Dieresis: the two dots move apart with the weight; they welded at Bold.
+- build_font(..., complete=False) yields the raw output the Regular's pipeline
+  takes as its baseline.
+
 2.010  (2026-10)
 - Bowl-to-stem junctions: where a bowl's bevel meets a stem the outline kept a
   V notch whose depth depends on the stroke (63 u at UltraLight, a real crotch;

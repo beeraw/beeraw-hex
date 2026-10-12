@@ -9,7 +9,7 @@ A geometric, strictly **monolinear** display sans, derived from the hexagonal
 *alveole* cells of the beeraw honey-brand logo. Flat-topped / flat-bottomed
 hexagonal cells, vertical side edges, bevelled and rounded corners.
 
-- **Version:** 2.010 · eight masters across two axes
+- **Version:** 2.011 · eight masters across two axes
 - **Scope:** French / Western-European Latin — ASCII, digits, punctuation,
   guillemets, `œ æ Œ Æ`, the full set of French accents, math signs and
   `€ © ® § ¢ £ ¥ …`
@@ -88,12 +88,15 @@ banner above (`tools/make_readme_image.py` → `images/`).
 The files in `fonts/` are build artifacts — regenerated from source, never
 edited by hand. There are two build paths:
 
-- the **base Regular** ships *normalised* (ccmp / gasp / GDEF / hinting, plus a
-  few extra Latin glyphs) and is built from the UFO
-  **`sources/BeerawHex-Regular.ufo`** by `tools/pipeline.sh`;
+- the **base Regular** is built from the UFO
+  **`sources/BeerawHex-Regular.ufo`** by `tools/pipeline.sh`, which also
+  normalises its outlines;
 - the **other seven masters** come straight from the parametric generator
   **`font_build.py`**, whose `MASTERS` table is the single place where stroke
   (`stroke`) and width (`width_factor`) are defined.
+
+Either way a master comes out complete: the same 172 glyphs, ccmp / GDEF / gasp
+and ttfautohint hinting with the same parameters.
 
 ```
 font_build.py              # parametric generator: the MASTERS table (both axes)
@@ -142,15 +145,17 @@ python tools/make_webfonts.py fonts/BeerawHex-Regular.ttf   # -> .otf + .woff2 +
 `tools/pipeline.sh` runs the full deterministic genesis (reconstruct the UFO
 from the baseline TTF → add monoline Latin glyphs → normalize → fix kinks →
 prepare tables → build + hint into `build/`). After changing glyph geometry in
-the generator, re-pin the baseline so the fix reaches the normalised Regular:
+the generator, re-pin the baseline so the fix reaches the Regular. The baseline
+is the generator's *raw* output (`complete=False`), since the pipeline adds
+marks, features and hinting itself:
 
 ```bash
-python -c "import font_build as fb; fb.build_font('sources/baseline.ttf', fb.MASTERS['Regular'])"
+python -c "import font_build as fb; fb.build_font('sources/baseline.ttf', fb.MASTERS['Regular'], complete=False)"
 tools/pipeline.sh && cp build/BeerawHex-Regular.ttf fonts/
 ```
 
-`font_build.py` refuses to overwrite a normalised master unless you pass
-`--force`, so a stray run cannot silently regress the shipped Regular.
+`font_build.py` skips the Regular unless you pass `--force`, so a stray run
+cannot replace the pipeline build.
 
 ## The monoline is the DNA
 

@@ -2,7 +2,7 @@ import math
 import os
 import re
 import json
-from shapely.geometry import Polygon, LineString, box
+from shapely.geometry import Polygon, LineString, Point, box
 from shapely.ops import unary_union
 from shapely import affinity
 from shapely.geometry.polygon import orient
@@ -15,7 +15,7 @@ from fontTools.ttLib.tables import ttProgram
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.misc.transform import Offset
 
-VERSION = "2.010"       # semantic version; drives name ID 5 and head.fontRevision
+VERSION = "2.011"       # semantic version; drives name ID 5 and head.fontRevision
 
 # ---- two design axes: WEIGHT (stroke) × WIDTH (proportion) ----
 # The monoline IS the ADN, so NEITHER axis touches the perpendicular stroke:
@@ -963,6 +963,48 @@ def at():
         box(ar + 0.42 * ar, cy - rh - 10, 2 * ar + 40, cy - SH * ih))
     return U(outer, ring(cell(2 * ar - ir, cy, ih, ir)))
 
+# ================= Latin extras =================
+# Currency and spacing diacritics. They used to exist in the Regular only,
+# drawn in tools/draw_latin_core.py at fixed Regular coordinates; here they
+# follow the stroke and the width like everything else.
+def cent():
+    return U(c(), vbar(RW - W / 2, -70, XH + 70))
+
+def sterling():
+    h = W / 2
+    xs = 46 + round(104 * WF) + h                 # stem centre
+    yt = CAP - h
+    reach = round(120 * WF)
+    # the stem, a bevelled shoulder like the f, and a short drop closing the curl
+    stroke = pline([(xs, h), (xs, yt - BEV), (xs + BEV, yt), (xs + BEV + reach, yt),
+                    (xs + 2 * BEV + reach, yt - BEV), (xs + 2 * BEV + reach, yt - BEV - 50)])
+    foot = hbar(xs - h - round(104 * WF), xs + h + round(230 * WF), 0)
+    cross = hbar(xs - h - round(54 * WF), xs + h + round(126 * WF), CCY - W / 2 - 15)
+    return U(stroke, foot, cross)
+
+def yen():
+    half = round(154 * WF)
+    return U(Y(), hbar(CRW - half, CRW + half, 250), hbar(CRW - half, CRW + half, 250 - W - 40))
+
+def dieresis_ch():
+    return _dieresis(180, 470)
+
+def acute_ch():
+    return _acute(150, 470)
+
+def macron_ch():
+    return hbar(40, 320, 560)
+
+def cedilla_ch():
+    return _cedilla(150)
+
+def dotted_circle():
+    """U+25CC, the base a lone combining mark is shown on: twelve dots on a ring."""
+    cx, cy, ring_r, dot_r = 250, 350, 210, 26
+    return U(*[Point(cx + ring_r * math.cos(math.pi / 2 + k * math.pi / 6),
+                     cy + ring_r * math.sin(math.pi / 2 + k * math.pi / 6)).buffer(dot_r, resolution=8)
+               for k in range(12)])
+
 # ================= build map =================
 LOWER = dict(a=a, b=b, c=c, d=d, e=e, f=f, g=None, h=h, i=i, j=j, k=k, l=l,
              m=m, n=n, o=o, p=p, q=q, r=r, s=s, t=t, u=u, v=v, w=w_, x=x, y=y, z=z)
@@ -996,7 +1038,10 @@ def _circum(cx, by):
 
 def _dieresis(cx, by):
     r = W * 0.44
-    return U(dot(cx - 66, by + 80, r), dot(cx + 66, by + 80, r))
+    # the dots move apart with the stroke: at a fixed 66 they leave 18 u of
+    # white at Bold and weld into a bar once the corners are rounded
+    d = max(66, r + 26)
+    return U(dot(cx - d, by + 80, r), dot(cx + d, by + 80, r))
 
 def _cedilla(cx):
     # a small bevelled hook at the accent stroke, the same turn as the j and the
@@ -1073,6 +1118,8 @@ SYM = {
     '©': copyright_ch, '‘': quoteleft, '“': quotedblleft, '”': quotedblright,
     '‹': guilsinglleft, '›': guilsinglright, '·': periodcentered, '•': bullet,
     '−': minus,
+    '¢': cent, '£': sterling, '¥': yen, '¨': dieresis_ch, '¯': macron_ch,
+    '´': acute_ch, '¸': cedilla_ch,
 }
 
 BUILDERS = {}
@@ -1286,7 +1333,9 @@ SPACING = {
     '/': (24, 24), "'": (34, 34), '’': (34, 34),
     # math signs share a common advance (412) — fontbakery math_signs_width
     '<': (75, 75), '>': (75, 75),
-    '&': (34, 30),   # traced glyph is wide; tighten a touch
+    '&': (34, 30),
+    '¢': (40, 30), '£': (40, 40), '¥': (20, 20), '¨': (40, 40), '¯': (40, 40),
+    '´': (40, 40), '¸': (40, 40),
 }
 
 # accented letters & apostrophe borrow their base letter's spacing
@@ -1365,7 +1414,46 @@ def _apply_master(cfg):
 _set_weight = _apply_master   # back-compat alias
 
 
-def build_font(path, cfg=None):
+# combining mark -> (code point, the ".comp" mark whose ink it carries)
+COMBINING = {
+    "gravecomb": (0x0300, "grave"), "acutecomb": (0x0301, "acute"),
+    "circumflexcomb": (0x0302, "circumflex"), "dieresiscomb": (0x0308, "dieresis"),
+    "cedillacomb": (0x0327, "cedilla"),
+}
+
+# ttfautohint parameters, the same as tools/build.py uses for the Regular:
+# hinting range 8..48 ppem (display face), and natural stem widths in all three
+# rendering modes so the monoline is never snapped to artificial stems.
+HINT_PARAMS = dict(hinting_range_min=8, hinting_range_max=48,
+                   hinting_limit=0, fallback_script="latn", default_script="latn",
+                   gray_stem_width_mode=-1,
+                   gdi_cleartype_stem_width_mode=-1,
+                   dw_cleartype_stem_width_mode=-1)
+
+
+def _autohint(path):
+    """Hint the saved TTF in place. Returns False when ttfautohint-py is missing,
+    so a bare generator install still builds (unhinted) instead of failing."""
+    try:
+        from ttfautohint import ttfautohint
+    except ImportError:
+        return False
+    with open(path, "rb") as fh:
+        data = fh.read()
+    with open(path, "wb") as fh:
+        fh.write(ttfautohint(in_buffer=data, **HINT_PARAMS))
+    from fontTools.ttLib import TTFont
+    font = TTFont(path)
+    font["head"].flags |= 0x0008          # hinted fonts must force integer ppem
+    font.save(path)
+    return True
+
+
+def build_font(path, cfg=None, complete=True):
+    """Build one master. complete=False stops at the raw outlines and kerning:
+    no combining marks, no ccmp / GDEF / gasp, no hinting. That raw form is what
+    tools/pipeline.sh takes as the Regular's baseline, since it adds those
+    itself on the UFO."""
     if cfg is None:
         cfg = MASTERS["Regular"]
     _apply_master(cfg)
@@ -1415,7 +1503,7 @@ def build_font(path, cfg=None):
     # with the spacing grave/etc. AGL names), kept at their drawn coordinates
     for mname, mfn in MARKS.items():
         gn = mname + ".comp"
-        gl, adv, xmn, xmx = geom_to_glyph(mfn(), translate=False, smooth=mname != "cedilla")
+        gl, adv, xmn, xmx = geom_to_glyph(mfn(), translate=False)
         glyphs[gn] = gl; advances[gn] = max(0, adv); bounds[gn] = (xmn, xmx)
         glyph_order.append(gn)
 
@@ -1439,6 +1527,18 @@ def build_font(path, cfg=None):
         advances[gname] = round((cxmax - cxmin) + lsb + rsb)
         cmap[ord(ch)] = gname
         glyph_order.append(gname)
+
+    if complete:
+        # combining marks: the spacing mark's ink, zero advance, so that a
+        # decomposed sequence (e + U+0301) still shows something sensible
+        for gn, (cp, mname) in COMBINING.items():
+            gl, _, xmn, xmx = geom_to_glyph(MARKS[mname](), translate=False)
+            glyphs[gn] = gl; advances[gn] = 0; bounds[gn] = (xmn, xmx)
+            cmap[cp] = gn; glyph_order.append(gn)
+        gl, adv, xmn, xmx = geom_to_glyph(dotted_circle(), 14, 14, smooth=False)
+        glyphs["dottedcircle"] = gl; advances["dottedcircle"] = adv
+        bounds["dottedcircle"] = (xmn, xmx)
+        cmap[0x25CC] = "dottedcircle"; glyph_order.append("dottedcircle")
 
     fb = FontBuilder(UPM, isTTF=True)
     fb.setupGlyphOrder(glyph_order)
@@ -1548,10 +1648,30 @@ def build_font(path, cfg=None):
         fea_text = re.sub(r"(pos [^;]*?)(-?\d+);",
                           lambda m: "%s%d;" % (m.group(1), round(int(m.group(2)) * WF)),
                           fea_text)
+        if complete:
+            # ccmp composes base + combining mark into the precomposed letter
+            # (NFD -> NFC); GDEF declares the marks so shapers treat them as such
+            marks = " ".join(COMBINING)
+            rules = "".join(
+                "    sub %s %s by %s;\n" % ("i" if base == "dotlessi" else base,
+                                            mark + "comb", name_for(ch))
+                for ch, (base, mark, _) in COMPOSITE.items())
+            fea_text += ("\n@MARKS = [%s];\n"
+                         "table GDEF {\n    GlyphClassDef , , @MARKS, ;\n} GDEF;\n"
+                         "feature ccmp {\n%s} ccmp;\n" % (marks, rules))
         addOpenTypeFeaturesFromString(fb.font, fea_text)
 
+    if complete:
+        # one gasp range: grid-fit and smooth, symmetric, at every size
+        gasp = newTable("gasp")
+        gasp.version = 1
+        gasp.gaspRange = {65535: 15}
+        fb.font["gasp"] = gasp
+
     fb.font.save(path)
-    print("saved", path, "glyphs:", len(glyph_order))
+    hinted = complete and _autohint(path)
+    print("saved", path, "glyphs:", len(glyph_order),
+          "(hinted)" if hinted else "(unhinted)")
 
 if __name__ == "__main__":
     import sys
@@ -1562,24 +1682,16 @@ if __name__ == "__main__":
     # build every master (or just the ones named on the command line)
     _wanted = [a for a in sys.argv[1:] if a in MASTERS] or list(MASTERS)
 
-    # Safety net: some masters ship a *normalised* build (tools/pipeline.sh adds
-    # ccmp/gasp/GDEF/hinting + extra glyphs, bumping the glyph count well past the
-    # generator's raw output). Don't silently regress those to the raw generator
-    # font — skip them unless --force is given.
-    def _is_normalised(path):
-        if not os.path.exists(path):
-            return False
-        try:
-            from fontTools.ttLib import TTFont
-            return TTFont(path)["maxp"].numGlyphs > 160
-        except Exception:
-            return False
+    # The Regular ships from tools/pipeline.sh (cubic UFO, normalised outlines).
+    # Every master now carries the same glyphs, features and hinting, so the
+    # glyph count no longer tells the two apart: the pipeline masters are named.
+    _PIPELINE = {"Regular"}
 
     for _style in _wanted:
         _cfg = MASTERS[_style]
         _target = os.path.join(_outdir, _cfg["filename"] + ".ttf")
-        if _is_normalised(_target) and not _force:
-            print(f"skip {_cfg['filename']}: shipped master is normalised "
-                  f"(rebuild it via tools/pipeline.sh, or pass --force)")
+        if _style in _PIPELINE and os.path.exists(_target) and not _force:
+            print(f"skip {_cfg['filename']}: built by tools/pipeline.sh "
+                  f"(or pass --force for the generator's own build)")
             continue
         build_font(_target, _cfg)

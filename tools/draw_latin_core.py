@@ -19,41 +19,11 @@ from fontTools.pens.qu2cuPen import Qu2CuPen
 RW, W, XH, CAP = fb.RW, fb.W, fb.XH, fb.CAP
 
 
-# ---- currency ------------------------------------------------------------
-def cent():
-    return fb.U(fb.c(), fb.vbar(RW - W // 2, -70, XH + 70))
-
-
-def sterling():
-    foot = fb.hbar(46, 470, 0)
-    stem = fb.vbar(150, 55, 360)
-    bowl = fb.ring(fb.cell(240, 520, 150, 160))
-    top = bowl.difference(fb.box(240, 300, 500, 560))     # open the curl right
-    cross = fb.hbar(96, 366, 292)
-    return fb.U(foot, stem, top, cross)
-
-
-def yen():
-    y = fb.Y()
-    bars = fb.U(fb.hbar(96, 404, 250), fb.hbar(96, 404, 120))   # two crossbars
-    return fb.U(y, bars)
-
-
-# ---- spacing diacritics (monoline, full stroke) --------------------------
-def dieresis():
-    return fb._dieresis(180, 470)
-
-
-def acute():
-    return fb._acute(150, 470)
-
-
-def macron():
-    return fb.hbar(40, 320, 560)
-
-
-def cedilla():
-    return fb._cedilla(150)
+# ---- currency and spacing diacritics ---------------------------------------
+# Drawn in font_build.py, where they follow the stroke and the width and are
+# shared by all eight masters. This step only re-emits them into the UFO.
+cent, sterling, yen = fb.cent, fb.sterling, fb.yen
+dieresis, acute, macron, cedilla = fb.dieresis_ch, fb.acute_ch, fb.macron_ch, fb.cedilla_ch
 
 
 # ---- ordinals (small superscript letter + underline) ---------------------
@@ -108,13 +78,13 @@ def pilcrow():
 # stand-ins and ª/º come out too thin — their aesthetic is a designer decision,
 # pending the scope call on full GF-Latin-Core expansion (see audit/08-latin-core.md).
 GLYPHS = {
-    "cent":     (0x00A2, cent,     (40, 30), True),
-    "sterling": (0x00A3, sterling, (40, 40), True),
-    "yen":      (0x00A5, yen,      (20, 20), True),
-    "dieresis": (0x00A8, dieresis, (40, 40), True),
-    "macron":   (0x00AF, macron,   (40, 40), True),
-    "acute":    (0x00B4, acute,    (40, 40), True),
-    "cedilla":  (0x00B8, cedilla,  (40, 40), True),
+    "cent":     (0x00A2, cent,     fb.sidebearings("¢"), True),
+    "sterling": (0x00A3, sterling, fb.sidebearings("£"), True),
+    "yen":      (0x00A5, yen,      fb.sidebearings("¥"), True),
+    "dieresis": (0x00A8, dieresis, fb.sidebearings("¨"), True),
+    "macron":   (0x00AF, macron,   fb.sidebearings("¯"), True),
+    "acute":    (0x00B4, acute,    fb.sidebearings("´"), True),
+    "cedilla":  (0x00B8, cedilla,  fb.sidebearings("¸"), True),
 }
 DRAFTS = {   # not shipped — need design sign-off
     "ordfeminine": (0x00AA, ordfeminine),
