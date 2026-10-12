@@ -15,7 +15,7 @@ from fontTools.ttLib.tables import ttProgram
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.misc.transform import Offset
 
-VERSION = "2.009"       # semantic version; drives name ID 5 and head.fontRevision
+VERSION = "2.010"       # semantic version; drives name ID 5 and head.fontRevision
 
 # ---- two design axes: WEIGHT (stroke) × WIDTH (proportion) ----
 # The monoline IS the ADN, so NEITHER axis touches the perpendicular stroke:
@@ -932,7 +932,7 @@ def ampersand():
         return h + u * WF
     dw = max(0, (W - 90) * 0.9)      # the top bowl widens with the stroke to keep its counter
     ul, ur = 65 - dw, 315 + dw       # top bowl, left / right
-    yx = 395 - 0.5 * max(0, W - 90)  # height of the crossing (lower when heavy: room for the top bowl)
+    yx = 395 - 0.9 * max(0, W - 90)  # height of the crossing (lower when heavy: room for the top bowl)
     ysb = yx + (ur - ul) / 2         # where the top bowl's sides end
     yt, ct, cb, R, ya = CAP - h, 80, 80, 425, 330
     pts = [(sx(ul + ysb + 60), -60),                          # foot (clipped at the baseline)
@@ -957,10 +957,11 @@ def at():
     rh = ih + gap + W
     cy = CCY - 55
     shell = cell(ar, cy, rh, ar)
-    outer = ring(shell).difference(box(ar + 0.42 * ar, cy - rh - 10, 2 * ar + 40, cy - ih))
-    bowl = cell(2 * ar - ir, cy, ih, ir)
-    inner = U(bowl, vbar(2 * ar - W, cy - ih, cy + ih)).difference(bowl.buffer(-W, **MIT))
-    return U(outer, inner.intersection(shell))
+    # the flank stops exactly where the bowl's lower bevel leaves it, so the
+    # stroke flows from the ring into the bowl: a spiral, with no stem foot
+    outer = ring(shell).difference(
+        box(ar + 0.42 * ar, cy - rh - 10, 2 * ar + 40, cy - SH * ih))
+    return U(outer, ring(cell(2 * ar - ir, cy, ih, ir)))
 
 # ================= build map =================
 LOWER = dict(a=a, b=b, c=c, d=d, e=e, f=f, g=None, h=h, i=i, j=j, k=k, l=l,
@@ -1077,6 +1078,18 @@ SYM = {
 BUILDERS = {}
 BUILDERS.update(LOWER); BUILDERS.update(UPPER); BUILDERS.update(DIGIT); BUILDERS.update(PUNCT)
 BUILDERS.update(LIGS); BUILDERS.update(EXTRA); BUILDERS.update(SYM)   # accents = composites
+
+# ---------- junction clean-up ----------
+NOTCH = 8           # closing distance: fills V notches up to ~18 u deep
+
+def close_notches(g):
+    """Where a bowl's bevel meets a stem, the outline keeps a V notch whose depth
+    depends on the stroke: a real crotch at UltraLight (63 u), nothing at Bold,
+    and in between a 15 u nick at Regular, too shallow to read as a crotch and
+    deep enough to make the contour wobble once the corners are rounded. A
+    mitred closing fills only those shallow nicks: deep crotches, apertures and
+    every convex corner are left exactly as drawn."""
+    return g.buffer(NOTCH, **MIT).buffer(-NOTCH, **MIT)
 
 # ---------- corner rounding ----------
 def round_corners(g, r=None):
@@ -1212,7 +1225,7 @@ def geom_to_glyph(g, lsb=SB, rsb=SB, translate=True, smooth=True):
     the drawn coordinates (accent marks, positioned later as components).
     smooth=False skips round_corners (for pre-vectorised glyphs like &)."""
     if smooth:
-        g = round_corners(g)
+        g = round_corners(close_notches(g))
     if g.is_empty:
         return TTGlyphPen(None).glyph(), 0, 0, 0
     polys = list(g.geoms) if g.geom_type == "MultiPolygon" else [g]

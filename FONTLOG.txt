@@ -29,6 +29,17 @@ never edited by hand. See README.md for the build steps.
 ChangeLog
 ---------
 
+2.010  (2026-10)
+- Bowl-to-stem junctions: where a bowl's bevel meets a stem the outline kept a
+  V notch whose depth depends on the stroke (63 u at UltraLight, a real crotch;
+  15 u at Regular, where it made the contour wobble once the corners were
+  rounded). close_notches() fills only those shallow nicks; the crotches of the
+  light masters are left as drawn.
+- At sign: a clean spiral. The ring's flank stops where the bowl's bevel leaves
+  it, with no stem foot.
+- Ampersand: the crossing sits lower in the heavy masters, to balance the two
+  counters at Bold.
+
 2.009  (2026-10)
 - Overall harmonisation: every glyph now speaks the alveole's vocabulary (flat,
   45 degree bevel, vertical stem, constant stroke) in all eight masters. A

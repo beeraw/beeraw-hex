@@ -9,7 +9,7 @@ A geometric, strictly **monolinear** display sans, derived from the hexagonal
 *alveole* cells of the beeraw honey-brand logo. Flat-topped / flat-bottomed
 hexagonal cells, vertical side edges, bevelled and rounded corners.
 
-- **Version:** 2.009 · eight masters across two axes
+- **Version:** 2.010 · eight masters across two axes
 - **Scope:** French / Western-European Latin — ASCII, digits, punctuation,
   guillemets, `œ æ Œ Æ`, the full set of French accents, math signs and
   `€ © ® § ¢ £ ¥ …`
