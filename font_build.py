@@ -1,7 +1,8 @@
 import math
 import os
+import re
 import json
-from shapely.geometry import Polygon, box
+from shapely.geometry import Polygon, LineString, box
 from shapely.ops import unary_union
 from shapely import affinity
 from shapely.geometry.polygon import orient
@@ -11,10 +12,10 @@ from fontTools.agl import UV2AGL
 from fontTools.ttLib import newTable
 from fontTools.ttLib.tables.O_S_2f_2 import Panose
 from fontTools.ttLib.tables import ttProgram
-from fontTools.feaLib.builder import addOpenTypeFeatures
+from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.misc.transform import Offset
 
-VERSION = "2.008"       # semantic version; drives name ID 5 and head.fontRevision
+VERSION = "2.009"       # semantic version; drives name ID 5 and head.fontRevision
 
 # ---- two design axes: WEIGHT (stroke) × WIDTH (proportion) ----
 # The monoline IS the ADN, so NEITHER axis touches the perpendicular stroke:
@@ -153,6 +154,16 @@ def dstroke(p0, p1, w=None):
     s = affinity.rotate(s, ang, origin=(0, 0))
     return affinity.translate(s, p0[0], p0[1])
 
+def pline(pts, w=None):
+    """Bent monoline stroke: ONE buffered centreline with mitred joints, so every
+    turn keeps the perpendicular stroke (a union of bars leaves a square corner
+    or a bump instead). This is the shared tool for every hook, bevel and zigzag
+    outside the alveole cell itself."""
+    w = W if w is None else w
+    return LineString(pts).buffer(w / 2, cap_style=2, join_style=2, mitre_limit=12)
+
+BEV = 70            # hook bevel: a true 45 degree turn, the alveole's own angle
+
 def clip(g, ylo, yhi):
     return g.intersection(box(-3000, ylo, 6000, yhi))
 
@@ -274,28 +285,29 @@ def i():
     return U(vbar(0, 0, XH), dot(W / 2, XH + 120, W / 2))
 
 def j():
-    # the stem must land on TOP of the hook: DESC + W, not a hard-coded 90 that
-    # only happened to equal W at Regular (it left the descender detached from
-    # the stem by 26 u at Light and 50 u at UltraLight).
-    stem = vbar(RW - W, DESC + W, XH)
-    hook = hbar(20, RW, DESC)
-    return U(stem, hook, dot(RW - W / 2, XH + 120, W / 2))
+    # stem and hook are one bent stroke: the turn is a 45 degree bevel, like the
+    # J and every alveole corner, instead of a right angle.
+    xs, yb = RW - W / 2, DESC + W / 2
+    hook = pline([(xs, XH), (xs, yb + BEV), (xs - BEV, yb), (0, yb)])
+    return U(hook, dot(xs, XH + 120, W / 2))
 
 def l():
     return vbar(0, 0, ASC)
 
 def f():
     fx = 90
-    stem = vbar(fx, 0, ASC)
-    arm = hbar(fx, fx + round(220 * WF), ASC - W)   # abrupt right-angle top (like the foot of j)
-    cross = hbar(-10, fx + round(195 * WF), XH - W / 2)  # arm reach follows the WIDTH axis
-    return U(stem, arm, cross)
+    xs, yt = fx + W / 2, ASC - W / 2
+    # bevelled shoulder (same turn as the j / g / t hooks); reach follows the WIDTH axis
+    stem = pline([(xs, 0), (xs, yt - BEV), (xs + BEV, yt), (fx + round(220 * WF), yt)])
+    cross = hbar(-10, fx + round(195 * WF), XH - W / 2)
+    return U(stem, cross)
 
 def t():
-    stem = vbar(90, 0, XH + 160)
-    cross = hbar(-10, round(320 * WF), XH - W / 2)   # crossbar & foot widen with the master
-    foot = hbar(90, 90 + round(150 * WF), 0)
-    return U(stem, cross, foot)
+    xs = 90 + W / 2
+    stem = pline([(xs, XH + 160), (xs, W / 2 + BEV), (xs + BEV, W / 2),
+                  (90 + round(190 * WF), W / 2)])           # bevelled foot
+    cross = hbar(-10, round(320 * WF), XH - W / 2)          # crossbar widens with the master
+    return U(stem, cross)
 
 def k():
     stem = vbar(0, 0, ASC)                       # full ascender height, like l
@@ -326,11 +338,15 @@ def y():
     right = dstroke((2 * mid, XH), (mid - RW, DESC), W)
     return clip(U(left, right), DESC, XH)
 
+def _bent_z(hw, top, drop):
+    """Z with the 7's DNA: a short vertical spur before the oblique, mirrored at
+    both corners, built as one bent stroke so the junctions are clean."""
+    stroke = pline([(2 * hw - W / 2, top - W / 2), (2 * hw - W / 2, top - W - drop),
+                    (W / 2, W + drop), (W / 2, W / 2)])
+    return clip(U(hbar(0, 2 * hw, top - W), hbar(0, 2 * hw, 0), stroke), 0, top)
+
 def z():
-    top = hbar(0, 2 * RW, XH - W)
-    bot = hbar(0, 2 * RW, 0)
-    diag = dstroke((2 * RW - W / 2, XH - W / 2), (W / 2, W / 2), W)
-    return clip(U(top, bot, diag), 0, XH)
+    return _bent_z(RW, XH, 64)
 
 def _s_shape(rw, ty, by, ov=0):
     h = ty - by
@@ -490,20 +506,27 @@ def P():
     bowl, bcy, bh, brw = _pr_bowl()
     return U(stem, bowl).difference(bowl.buffer(-W, **MIT))
 
-TAIL_OUT = 140      # how far the Q tail reaches past the bowl's outer contour
+TAIL_OUT = 150      # how far the Q tail reaches past the bowl's outer contour
 
 def Q():
-    base = cell(CRW, CCY, CCY + OV_UC, CRW)
+    rh = CCY + OV_UC
+    base = cell(CRW, CCY, rh, CRW)
     g = ring(base)
     counter = base.buffer(-W, **MIT)
-    # A long 45° ray from the bowl centre, then trimmed at BOTH ends:
-    #  - minus the counter, so it can't cut a stub across the inside of the bowl
-    #    (the old tail started at the centre and did exactly that);
-    #  - intersected with the bowl grown by TAIL_OUT, so it always protrudes the
-    #    same amount past the outer edge whatever the width/weight.
-    ray = dstroke((CRW, CCY), (4 * CRW, CCY - 3 * CRW), W)
+    # The tail leaves the bottom-right bevel at its MIDDLE and at a right angle.
+    # (A ray from the bowl centre comes out at the corner between the bevel and
+    # the vertical side, which looks like an accident.) It never enters the
+    # counter, and it is intersected with the bowl grown by TAIL_OUT so that it
+    # protrudes the same amount whatever the width/weight.
+    tf = CRW * 0.42
+    mx, my = (CRW + tf + 2 * CRW) / 2, (2 * CCY - rh - SH * rh) / 2   # bevel midpoint
+    nx, ny = (1 - SH) * rh, -(CRW - tf)                             # outward normal
+    n = math.hypot(nx, ny)
+    nx, ny = nx / n, ny / n
+    ray = dstroke((mx - 400 * nx, my - 400 * ny), (mx + 600 * nx, my + 600 * ny), W)
     tail = ray.difference(counter).intersection(
         base.buffer(TAIL_OUT, join_style=1, resolution=RES))
+    tail = tail.intersection(box(CRW, -3000, 6000, CCY))             # lower-right quadrant only
     return U(g, clip(tail, DESC, CCY))
 
 def R():
@@ -552,8 +575,7 @@ def Y():
     return clip(g, 0, CAP)
 
 def Z():
-    return clip(U(hbar(0, 2 * CRW, CAP - W), hbar(0, 2 * CRW, 0),
-                  dstroke((2 * CRW - W / 2, CAP - W / 2), (W / 2, W / 2), W)), 0, CAP)
+    return _bent_z(CRW, CAP, 90)
 
 # ================= digits =================
 DRW = 200
@@ -572,25 +594,29 @@ def n1():
     return clip(U(stem, flag, base), 0, CAP)
 
 def n2():
-    top = hbar(0, 2 * DRW, CAP - W)
-    mid = hbar(0, 2 * DRW, CCY - W / 2)
-    bot = hbar(0, 2 * DRW, 0)
-    ur = vbar(2 * DRW - W, CCY - W / 2, CAP)
-    ll = vbar(0, 0, CCY + W / 2)
-    return U(top, mid, bot, ur, ll)
+    # the 5 flipped top to bottom: same bars, same single bevelled corner
+    return affinity.scale(n5(), xfact=1, yfact=-1, origin=(DRW, CCY))
 
 def n3():
-    top = hbar(0, 2 * DRW, CAP - W)
+    # both right-hand corners carry the 5's bevel; the waist stays square
+    Rc = 180
+    corner = ring(cell(2 * DRW - Rc, Rc, Rc, Rc)).intersection(
+        box(2 * DRW - Rc, -10, 2 * DRW + 20, Rc))
+    top = hbar(0, 2 * DRW - Rc, CAP - W)
+    bot = hbar(0, 2 * DRW - Rc, 0)
     mid = hbar(DRW - 40, 2 * DRW, CCY - W / 2)
-    bot = hbar(0, 2 * DRW, 0)
-    right = vbar(2 * DRW - W, 0, CAP)
-    return U(top, mid, bot, right)
+    right = vbar(2 * DRW - W, Rc, CAP - Rc)
+    return U(top, mid, bot, right, corner,
+             affinity.scale(corner, xfact=1, yfact=-1, origin=(DRW, CCY)))
 
 def n4():
-    diag = dstroke((2 * DRW - W - 30, CAP), (0, CAP * 0.32), W)
-    base = hbar(-10, 2 * DRW, CAP * 0.32 - W / 2)
+    yb = CAP * 0.32
+    diag = dstroke((2 * DRW - W - 30, CAP), (0, yb), W)
+    base = hbar(-10, 2 * DRW, yb - W / 2)
     stem = vbar(2 * DRW - W - 30, 0, CAP)
-    return clip(U(diag, base, stem), 0, CAP)
+    # trim the oblique's square end to the bar, so the corner is a clean point
+    g = U(clip(diag, yb - W / 2, CAP), base, stem)
+    return clip(g, 0, CAP).intersection(box(-10, -10, 9999, 9999))
 
 def n5():
     my = CCY - W / 2                                           # mid-bar level
@@ -675,8 +701,12 @@ def exclam():
 def exclamdown():
     return U(vbar(0, 0, CAP - W - 130), dot(W / 2, CAP - W / 2, W / 2))
 
+def _question_rw():
+    # the bowl must keep a counter: a fixed 150 leaves 40 u of white at Bold
+    return max(150, W + 80)
+
 def question():
-    rw = 150
+    rw = _question_rw()
     cy = CAP - rw                                       # bowl centre (bowl spans CAP-2rw..CAP)
     bowl = ring(cell(rw, cy, rw, rw))
     bowl = bowl.difference(box(-120, cy - rw - 30, rw, cy + 4))   # open the lower-left quadrant
@@ -684,10 +714,15 @@ def question():
     return U(bowl, stem, dot(rw, W, W / 2))
 
 def questiondown():
-    return affinity.rotate(question(), 180, origin=(150, CAP / 2))
+    return affinity.rotate(question(), 180, origin=(_question_rw(), CAP / 2))
+
+def _quote_gap():
+    # distance between the two marks of a double quote: they must stay apart
+    # once the stroke thickens (150 leaves 20 u of white at Bold, which welds)
+    return max(150, W + 75)
 
 def quotedbl():
-    return U(vbar(0, CAP - 190, CAP), vbar(150, CAP - 190, CAP))
+    return U(vbar(0, CAP - 190, CAP), vbar(_quote_gap(), CAP - 190, CAP))
 
 def quotesingle_():
     return vbar(0, CAP - 190, CAP)
@@ -704,10 +739,10 @@ def quoteleft():                         # ‘
     return affinity.rotate(apostrophe(), 180, origin=(W / 2, CAP - 95))
 
 def quotedblright():                     # ”
-    return U(apostrophe(), affinity.translate(apostrophe(), 150, 0))
+    return U(apostrophe(), affinity.translate(apostrophe(), _quote_gap(), 0))
 
 def quotedblleft():                      # “
-    return U(quoteleft(), affinity.translate(quoteleft(), 150, 0))
+    return U(quoteleft(), affinity.translate(quoteleft(), _quote_gap(), 0))
 
 def semicolon():
     return U(dot(W / 2, XH - W / 2, W / 2), comma())
@@ -729,10 +764,15 @@ def equal():
     return U(hbar(0, 320, CCY + 30), hbar(0, 320, CCY - 30 - W))
 
 def _chevron(right, x0, y0, y1, half):
+    # one bent stroke (mitred vertex) instead of two overlapping bars
     ym = (y0 + y1) / 2
-    if right:
-        return U(dstroke((x0, y0), (x0 + half, ym), WA), dstroke((x0 + half, ym), (x0, y1), WA))
-    return U(dstroke((x0 + half, y0), (x0, ym), WA), dstroke((x0, ym), (x0 + half, y1), WA))
+    pts = ([(x0, y0), (x0 + half, ym), (x0, y1)] if right
+           else [(x0 + half, y0), (x0, ym), (x0 + half, y1)])
+    return pline(pts, WA)
+
+def _heavy():
+    # extra room the small chevrons need above the Regular stroke
+    return max(0, W - 90)
 
 def less():
     return _chevron(False, 20, CCY - 170, CCY + 170, 240)
@@ -741,16 +781,26 @@ def greater():
     return _chevron(True, 20, CCY - 170, CCY + 170, 240)
 
 def guilsinglleft():
-    return _chevron(False, 20, 175, 385, 100)
+    k = _heavy()
+    return _chevron(False, 20, 175 - 0.6 * k, 385 + 0.6 * k, 100 + 0.5 * k)
 
 def guilsinglright():
-    return _chevron(True, 20, 175, 385, 100)
+    k = _heavy()
+    return _chevron(True, 20, 175 - 0.6 * k, 385 + 0.6 * k, 100 + 0.5 * k)
+
+# ( [ { are one family: the same stem between the same two heights, ending in
+# a 45 degree bevel (parenthesis), a square arm (bracket) or a bevel plus a
+# centre point (brace).
+ENC_T = CAP + 75
+ENC_B = -75
+
+def _mirror(g, left):
+    return g if left else affinity.scale(g, xfact=-1, yfact=1, origin=(0, 0))
 
 def _paren(left):
-    rw, cy, rh = 150, CAP / 2, (CAP + 160) / 2
-    r = ring(cell(rw, cy, rh, rw, sh=0.30))            # sh low -> smooth curve, not octagonal
-    keep = box(-999, -999, rw, 9999) if left else box(rw, -999, 9999, 9999)
-    return clip(r.intersection(keep), -90, CAP + 90)
+    a = 105
+    g = pline([(a + 60, ENC_T + 60), (0, ENC_T - a), (0, ENC_B + a), (a + 60, ENC_B - 60)])
+    return _mirror(clip(g, ENC_B, ENC_T), left)
 
 def parenleft():
     return _paren(True)
@@ -759,10 +809,9 @@ def parenright():
     return _paren(False)
 
 def _bracket(left):
-    w = 150
-    stem = vbar(0 if left else w - W, -70, CAP + 70)
-    arms = U(hbar(0, w, CAP + 70 - W), hbar(0, w, -70))
-    return U(stem, arms)
+    w = W + 80                                   # the arm reach no longer shrinks as the stem thickens
+    g = U(vbar(0, ENC_B, ENC_T), hbar(0, w, ENC_T - W), hbar(0, w, ENC_B))
+    return _mirror(g, left)
 
 def bracketleft():
     return _bracket(True)
@@ -771,18 +820,10 @@ def bracketright():
     return _bracket(False)
 
 def _brace(left):
-    w, mid = 150, CCY
-    rh = (CAP + 140) / 4
-    top = clip(ring(cell(w, mid + rh, rh, w)), mid + W / 2, CAP + 70)   # upper quarter arc
-    bot = clip(ring(cell(w, mid - rh, rh, w)), -70, mid - W / 2)        # lower quarter arc
-    keep = box(-999, -999, w, 9999)
-    top = top.intersection(keep)
-    bot = bot.intersection(keep)
-    tongue = hbar(-55, w * 0.5, mid - W / 2)                            # mid point, outward
-    g = U(top, bot, tongue)
-    if not left:
-        g = affinity.scale(g, xfact=-1, origin=(w / 2, mid))
-    return g
+    a, b, m = 85, 62, CCY
+    g = pline([(a + 60, ENC_T + 60), (0, ENC_T - a), (0, m + b), (-b, m), (0, m - b),
+               (0, ENC_B + a), (a + 60, ENC_B - 60)])
+    return _mirror(clip(g, ENC_B, ENC_T), left)
 
 def braceleft():
     return _brace(True)
@@ -791,7 +832,7 @@ def braceright():
     return _brace(False)
 
 def bar():
-    return vbar(0, -70, CAP + 70)
+    return vbar(0, ENC_B, ENC_T)
 
 def backslash():
     return dstroke((0, CAP + 60), (260, -60), W)
@@ -801,9 +842,13 @@ def asciicircum():
     return U(dstroke((30, CAP - 190), pk, W), dstroke(pk, (270, CAP - 190), W))
 
 def asciitilde():
-    y, a = CCY, 95
-    P = [(0, y - 10), (85, y + a), (175, y - 10), (200, y - 20), (285, y - a), (370, y + 10)]
-    return clip(U(*[dstroke(P[k], P[k + 1], W) for k in range(len(P) - 1)]), y - a - W, y + a + W)
+    # an angular wave in the alveole's vocabulary: flats joined by bevels, one
+    # bent stroke. Amplitude and step follow the stroke so it never clogs.
+    y = CCY
+    a, s = max(48, W * 0.55), max(92, W * 1.05)
+    pts = [(0, y - a), (s, y + a), (1.7 * s, y + a), (2.7 * s, y - a),
+           (3.4 * s, y - a), (4.4 * s, y + a)]
+    return clip(pline(pts), y - a - W / 2, y + a + W / 2)
 
 def underscore():
     return hbar(0, 2 * RW, -120)
@@ -877,25 +922,45 @@ def dollar():
     return U(_s_shape(rw, CAP - 30, 30, 0), vbar(rw - W / 2, -80, CAP + 80))
 
 def ampersand():
-    # Traced from the user's reference drawing (sources/esperluette.png -> vectorised
-    # to sources/ampersand.json). Geometric primitives couldn't capture a real
-    # ampersand at this stroke weight, so we honour the supplied design. Kept out
-    # of round_corners (PRESMOOTHED) so the loops aren't thickened.
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sources", "ampersand.json")
-    with open(path, encoding="utf-8") as fh:
-        data = json.load(fh)
-    poly = Polygon(data["outer"], data["holes"])
-    return poly.buffer(AMP_BUF, join_style=1, resolution=8)   # thicken to the current monoline weight
+    """Built from the alveole's own moves, as one bent stroke. The small top bowl
+    is a cell whose two lower bevels simply carry on: one runs down to the foot,
+    the other becomes the upper-left bevel of the lower bowl, so the waist is a
+    clean crossing. The lower bowl stays open on the right and ends in an arm,
+    like the c and the e."""
+    h = W / 2
+    def sx(u):                       # unit x (normal width) -> master x
+        return h + u * WF
+    dw = max(0, (W - 90) * 0.9)      # the top bowl widens with the stroke to keep its counter
+    ul, ur = 65 - dw, 315 + dw       # top bowl, left / right
+    yx = 395 - 0.5 * max(0, W - 90)  # height of the crossing (lower when heavy: room for the top bowl)
+    ysb = yx + (ur - ul) / 2         # where the top bowl's sides end
+    yt, ct, cb, R, ya = CAP - h, 80, 80, 425, 330
+    pts = [(sx(ul + ysb + 60), -60),                          # foot (clipped at the baseline)
+           (sx(ul), ysb), (sx(ul), yt - ct), (sx(ul + ct), yt),
+           (sx(ur - ct), yt), (sx(ur), yt - ct), (sx(ur), ysb),
+           (sx(0), yx - (ul + ur) / 2),                       # back through the crossing
+           (sx(0), h + cb), (sx(cb), h), (sx(R - cb), h),
+           (sx(R), h + cb), (sx(R), ya)]                      # arm
+    return clip(pline(pts), 0, CAP + 10)
 
-PRESMOOTHED = {"&", "@"}   # already-vectorised glyphs: skip round_corners
+PRESMOOTHED = set()   # no traced glyph is left: everything goes through round_corners
 
 def at():
-    # traced from the user's reference (sources/arobase.png -> arobase.json)
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sources", "arobase.json")
-    with open(path, encoding="utf-8") as fh:
-        data = json.load(fh)
-    poly = Polygon(data["outer"], data["holes"])
-    return poly.buffer(AT_BUF, join_style=1, resolution=8) if AT_BUF else poly
+    """A spiral in the alveole's vocabulary: a lowercase a at the full stroke
+    whose stem IS the right flank of the surrounding ring. The ring runs from
+    the stem over the top and round the left, and ends open under the a, like
+    the e. The glyph grows with the weight instead of thinning its strokes."""
+    gap = 66                                        # white between the a and the ring
+    ih = 250 - _heavy() * 0.5                       # bowl half-height
+    ir = round(200 * WF) - _heavy() * 0.25          # bowl half-width
+    ar = (2 * ir + W + gap) / 2                     # ring half-width
+    rh = ih + gap + W
+    cy = CCY - 55
+    shell = cell(ar, cy, rh, ar)
+    outer = ring(shell).difference(box(ar + 0.42 * ar, cy - rh - 10, 2 * ar + 40, cy - ih))
+    bowl = cell(2 * ar - ir, cy, ih, ir)
+    inner = U(bowl, vbar(2 * ar - W, cy - ih, cy + ih)).difference(bowl.buffer(-W, **MIT))
+    return U(outer, inner.intersection(shell))
 
 # ================= build map =================
 LOWER = dict(a=a, b=b, c=c, d=d, e=e, f=f, g=None, h=h, i=i, j=j, k=k, l=l,
@@ -910,9 +975,9 @@ PUNCT = {'.': period, ',': comma, '-': hyphen, "'": apostrophe, ':': colon, '/':
 def g_():
     bowl = cell(RW, 250, 250 + OV_LC, RW)
     body = bowl.difference(bowl.buffer(-W, **MIT))
-    stem = vbar(2 * RW - W, DESC + W, XH)      # sits on the hook — see j()
-    hook = hbar(20, 2 * RW, DESC)
-    return U(body, stem, hook)
+    xs, yb = 2 * RW - W / 2, DESC + W / 2
+    tail = pline([(xs, XH), (xs, yb + BEV), (xs - BEV, yb), (20, yb)])   # bevelled hook, see j()
+    return U(body, tail)
 LOWER['g'] = g_
 
 # ================= diacritics & accented letters =================
@@ -933,12 +998,10 @@ def _dieresis(cx, by):
     return U(dot(cx - 66, by + 80, r), dot(cx + 66, by + 80, r))
 
 def _cedilla(cx):
-    # traced from the user's reference (sources/cedille.png -> cedille.json),
-    # centred at x=0, hanging below the baseline. Placed under C/c as a component.
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sources", "cedille.json")
-    with open(path, encoding="utf-8") as fh:
-        data = json.load(fh)
-    return affinity.translate(Polygon(data["outer"], data["holes"]), cx, 0)
+    # a small bevelled hook at the accent stroke, the same turn as the j and the
+    # g, hanging below the baseline. Centred on cx; placed under C/c as a component.
+    yb, b = -200 + WA / 2, 50
+    return pline([(cx, 12), (cx, yb + b), (cx - b, yb), (cx - 105, yb)], WA)
 
 def dotless_i():
     return vbar(0, 0, XH)
@@ -987,16 +1050,10 @@ def _AE():
 # french guillemets
 def _guill(right):
     # The two chevrons must sit far enough apart that round_corners' dilate step
-    # cannot bridge them. x0 20/135 with half 78 welded them into a solid blob at
-    # Bold weight; 20/175 with half 72 keeps a clean gap. (tools/redraw_glyphs.py
-    # already carried this fix for the normalised Regular — back-ported here so
-    # every generator master gets it too.)
-    HALF = 72
-    def chev(x0):
-        if right:
-            return U(dstroke((x0, 175), (x0 + HALF, 280), WA), dstroke((x0 + HALF, 280), (x0, 385), WA))
-        return U(dstroke((x0 + HALF, 175), (x0, 280), WA), dstroke((x0, 280), (x0 + HALF, 385), WA))
-    return U(chev(20), chev(175))
+    # cannot bridge them, and they must grow with the stroke or they clog at Bold.
+    k = _heavy()
+    half, y0, y1 = 72 + 0.5 * k, 175 - 0.6 * k, 385 + 0.6 * k
+    return U(_chevron(right, 20, y0, y1, half), _chevron(right, 175 + k, y0, y1, half))
 
 LIGS = {'œ': _oe, 'æ': _ae, 'Œ': _OE, 'Æ': _AE, '«': lambda: _guill(False), '»': lambda: _guill(True)}
 
@@ -1229,11 +1286,27 @@ ACCENT_BASE = {
     'Ÿ': 'Y', 'Ç': 'C',
 }
 
+def _weight_spacing():
+    """Sidebearings follow the stroke. The ink width of a letter is fixed, so a
+    heavier stroke only eats the counters: with a constant sidebearing the white
+    BETWEEN two bold letters (92 u) ends up thinner than the stroke itself and
+    the stems clump. Light masters get a little air too, to match their wide
+    counters. Regular is the reference (factor 1)."""
+    if W >= 90:
+        return 1 + 0.30 * (W - 90) / 40
+    return 1 + 0.12 * (90 - W) / 50
+
 def sidebearings(ch):
     # spacing opens with the WIDTH axis so a Wide master isn't cramped between
-    # its own widened glyphs (WF=1.0 -> the Regular numbers, unchanged).
+    # its own widened glyphs, and with the WEIGHT axis (see _weight_spacing).
     lsb, rsb = SPACING.get(ACCENT_BASE.get(ch, ch), (SB, SB))
-    return round(lsb * WF), round(rsb * WF)
+    k = WF * _weight_spacing()
+    return round(lsb * k), round(rsb * k)
+
+def space_advance():
+    # a word space of about 57 % of the n: wide enough to separate words, narrow
+    # enough not to tear holes in a line (it used to be 460, almost a full n)
+    return round((250 + 0.35 * W) * WF)
 
 def name_for(ch):
     """AGLFN glyph name (Phase 7 — no more uniXXXX for named glyphs)."""
@@ -1301,8 +1374,9 @@ def build_font(path, cfg=None):
     # spaces (no contour). U+0020 and U+00A0 share the space advance; U+202F is
     # the French narrow no-break space (Phase 5). Named uniXXXX legitimately —
     # these code points have no AGL name.
-    for gname, cp, adv in (("space", 0x20, 460), ("uni00A0", 0xA0, 460),
-                           ("uni202F", 0x202F, 220)):
+    sp = space_advance()
+    for gname, cp, adv in (("space", 0x20, sp), ("uni00A0", 0xA0, sp),
+                           ("uni202F", 0x202F, round(sp / 2))):
         glyphs[gname] = empty
         advances[gname] = adv
         cmap[cp] = gname
@@ -1454,7 +1528,14 @@ def build_font(path, cfg=None):
     # ---- Phase 4: kerning (GPOS) compiled from features/kern.fea ----
     fea = os.path.join(os.path.dirname(os.path.abspath(__file__)), "features", "kern.fea")
     if os.path.exists(fea):
-        addOpenTypeFeatures(fb.font, fea)
+        with open(fea, encoding="utf-8") as fh:
+            fea_text = fh.read()
+        # kern.fea is written for the normal width: scale every value with the
+        # WIDTH axis, or the Wide masters keep gaps sized for narrower glyphs
+        fea_text = re.sub(r"(pos [^;]*?)(-?\d+);",
+                          lambda m: "%s%d;" % (m.group(1), round(int(m.group(2)) * WF)),
+                          fea_text)
+        addOpenTypeFeaturesFromString(fb.font, fea_text)
 
     fb.font.save(path)
     print("saved", path, "glyphs:", len(glyph_order))

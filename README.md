@@ -9,7 +9,7 @@ A geometric, strictly **monolinear** display sans, derived from the hexagonal
 *alveole* cells of the beeraw honey-brand logo. Flat-topped / flat-bottomed
 hexagonal cells, vertical side edges, bevelled and rounded corners.
 
-- **Version:** 2.008 · eight masters across two axes
+- **Version:** 2.009 · eight masters across two axes
 - **Scope:** French / Western-European Latin — ASCII, digits, punctuation,
   guillemets, `œ æ Œ Æ`, the full set of French accents, math signs and
   `€ © ® § ¢ £ ¥ …`
@@ -101,9 +101,9 @@ sources/
   BeerawHex-Regular.ufo    # normalised source for the base Regular
   features.fea             # OpenType features (ccmp, kern, marks)
   baseline.ttf             # frozen baseline the genesis pipeline reconstructs the UFO from
-  ampersand.json           # vectorised design inputs…
-  arobase.json / .png      #   …and their reference drawings
-  cedille.json / .png
+  ampersand.json           # earlier traced drawings of & @ and the cedilla, kept
+  arobase.json / .png      #   as references only: since 2.009 the three glyphs
+  cedille.json / .png      #   are built from the generator's own primitives
   esperluette.png
 features/kern.fea          # GPOS kerning
 tools/                     # build + QA pipeline (see below)

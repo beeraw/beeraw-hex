@@ -29,6 +29,29 @@ never edited by hand. See README.md for the build steps.
 ChangeLog
 ---------
 
+2.009  (2026-10)
+- Overall harmonisation: every glyph now speaks the alveole's vocabulary (flat,
+  45 degree bevel, vertical stem, constant stroke) in all eight masters. A
+  shared primitive, pline(), draws anything that turns as one bent stroke with
+  mitred joints.
+- Ampersand, at sign and cedilla are no longer traced from drawings: the three
+  are built from the generator's primitives. The at sign grows with the weight
+  instead of clogging.
+- Parentheses, brackets and braces form one family (same stem, same heights),
+  ending in a bevel, a square arm, or a bevel plus a centre point.
+- f, t, j, g: bevelled hooks instead of right angles. 2 and 3 carry the same
+  bevelled corners as the 5 (the 2 is the 5 flipped). 4: clean point.
+- Z and z with spurs, chevrons and tilde: the Regular's drawings now reach the
+  seven other masters (they used to live in tools/redraw_glyphs.py). The tilde
+  is angular.
+- Q: the tail leaves the middle of the bevel at a right angle.
+- ? ¿ " and the curly quotes, guillemets, ~ [ ]: dimensions follow the weight
+  so they stay legible at Bold.
+- Sidebearings follow the weight (x1.30 at Bold, x1.06 at Light, x1.12 at
+  UltraLight; Regular unchanged). Word space reduced from 460 to 282 u at
+  Regular (it follows weight and width); the narrow no-break space is half of it.
+- Kerning of the Wide masters scaled with the width (x1.35).
+
 2.008  (2026-07)
 - Four new masters, completing a 4 x 2 matrix (eight masters): UltraLight (100,
   stroke 40) and Light (300, stroke 64), at both the normal and the Wide width.

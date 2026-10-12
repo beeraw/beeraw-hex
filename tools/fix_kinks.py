@@ -26,8 +26,6 @@ import ufoLib2
 SNAPS = {
     "U":          [(445, 455.9, 512, 556, "x", 456),    # right inner wall
                    (136.5, 146, 512, 556, "x", 136)],   # left inner wall
-    "braceleft":  [(175.5, 178, 383, 390, "x", 175)],
-    "braceright": [(120.5, 121.9, 313, 317, "x", 122)],
 }
 
 
